@@ -51,7 +51,6 @@ int NumExp::MaxArgs()const{
 int OpExp::MaxArgs()const{
     int leftMaxArgs = this->left->MaxArgs();
     int rightMaxArgs = this->right->MaxArgs();
-
     return leftMaxArgs > rightMaxArgs ? leftMaxArgs : rightMaxArgs;
 }
 int EseqExp::MaxArgs() const
