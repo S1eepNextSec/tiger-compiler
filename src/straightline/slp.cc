@@ -57,6 +57,7 @@ IntAndTable* OpExp::Interp(Table *t) const{
     IntAndTable* it2 = this->right->Interp(it1->t);
 
     int val = 0;
+    
     switch (this->oper) {
     case PLUS:
         val = it1->i + it2->i;
