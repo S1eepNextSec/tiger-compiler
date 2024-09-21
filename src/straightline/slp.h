@@ -60,7 +60,7 @@ class Exp {
   // Hints: You may add interfaces like `int MaxArgs()`,
   //        and ` IntAndTable *Interp(Table *)`
   public:
-    virtual int MaxArgs() const;
+    virtual int MaxArgs() const = 0;
     virtual IntAndTable * Interp(Table *) const = 0;
 };
 
@@ -69,6 +69,7 @@ class IdExp : public Exp {
   explicit IdExp(std::string id) : id(std::move(id)) {}
   // TODO: you'll have to add some definitions here (lab1).
   IntAndTable *Interp(Table *) const override;
+  int MaxArgs() const override;
 
   private:
   std::string id;
@@ -79,6 +80,7 @@ class NumExp : public Exp {
   explicit NumExp(int num) : num(num) {}
   // TODO: you'll have to add some definitions here.
   IntAndTable *Interp(Table *) const override;
+  int MaxArgs() const override;
 
   private:
   int num;
@@ -89,6 +91,7 @@ class OpExp : public Exp {
   OpExp(Exp *left, BinOp oper, Exp *right)
       : left(left), oper(oper), right(right) {}
   IntAndTable *Interp(Table *)const override;
+  int MaxArgs() const override;
 
   private:
   Exp *left;
@@ -113,6 +116,7 @@ class ExpList {
   // Hints: You may add interfaces like `int MaxArgs()`, `int NumExps()`,
   //        and ` IntAndTable *Interp(Table *)`
     virtual int MaxArgs() const = 0;
+    virtual int NumExps() const = 0;
     virtual IntAndTable *Interp(Table *) const = 0;
 };
 
@@ -122,6 +126,7 @@ class PairExpList : public ExpList {
   // TODO: you'll have to add some definitions here (lab1).
   IntAndTable *Interp(Table *) const override;
   int MaxArgs() const override;
+  int NumExps() const override;
 
   private:
   Exp *exp;
@@ -135,6 +140,7 @@ class LastExpList : public ExpList {
 
   IntAndTable *Interp(Table *) const override;
   int MaxArgs() const override;
+  int NumExps() const override;
 
   private:
   Exp *exp;

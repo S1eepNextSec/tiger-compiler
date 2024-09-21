@@ -30,7 +30,10 @@ Table *A::AssignStm::Interp(Table *t) const {
 
 int A::PrintStm::MaxArgs() const {
   // TODO: put your code here (lab1).
-  return exps->MaxArgs();
+  int subMaxArgs = this->exps->MaxArgs();
+  int args = this->exps->NumExps();
+
+  return subMaxArgs > args ? subMaxArgs : args;
 }
 
 Table *A::PrintStm::Interp(Table *t) const {
@@ -39,8 +42,24 @@ Table *A::PrintStm::Interp(Table *t) const {
   return it->t;
 }
 
-int Exp::MaxArgs() const {
+int IdExp::MaxArgs()const{
     return 0;
+}
+int NumExp::MaxArgs()const{
+    return 0;
+}
+int OpExp::MaxArgs()const{
+    int leftMaxArgs = this->left->MaxArgs();
+    int rightMaxArgs = this->right->MaxArgs();
+
+    return leftMaxArgs > rightMaxArgs ? leftMaxArgs : rightMaxArgs;
+}
+int EseqExp::MaxArgs() const
+{
+    int stmMaxArgs = stm->MaxArgs();
+    int expMaxArgs = exp->MaxArgs();
+
+    return stmMaxArgs > expMaxArgs ? stmMaxArgs : expMaxArgs;
 }
 
 IntAndTable* IdExp::Interp(Table *t) const{
@@ -83,22 +102,23 @@ IntAndTable* EseqExp::Interp(Table *t) const{
     return it;
 }
 
-int EseqExp::MaxArgs() const {
-    int stmMaxArgs = stm->MaxArgs();
-    int expMaxArgs = exp->MaxArgs();
-
-    return stmMaxArgs > expMaxArgs ? stmMaxArgs : expMaxArgs;
-}
-
-int ExpList::MaxArgs() const {
-    return 0;
-}
 
 int PairExpList::MaxArgs() const {
-    return 1 + tail->MaxArgs();
+    int expMaxArgs = this->exp->MaxArgs();
+    int restMaxArgs = this->tail->MaxArgs();
+
+    return expMaxArgs > restMaxArgs ? expMaxArgs : restMaxArgs;
 }
 
 int LastExpList::MaxArgs() const {
+    return this->exp->MaxArgs();
+}
+
+int PairExpList::NumExps() const {
+    return 1 + this->tail->NumExps();
+}
+
+int LastExpList::NumExps() const {
     return 1;
 }
 
