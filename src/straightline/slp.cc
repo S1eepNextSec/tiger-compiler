@@ -8,6 +8,7 @@ int A::CompoundStm::MaxArgs() const {
   int stm1args = stm1->MaxArgs();
   int stm2args = stm2->MaxArgs();
 
+
   return stm1args > stm2args ? stm1args : stm2args;
 }
 
