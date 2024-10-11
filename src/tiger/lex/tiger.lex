@@ -135,12 +135,12 @@ letter [a-zA-Z]
   errormsg_->Error(errormsg_->tok_pos_, "illegal comment end");
 }
 
-"\"" {
+\" {
   adjust();
   begin(StartCondition_::STR);
 }
 
-<STR>"\"" {
+<STR>\" {
   adjustStr();
   begin(StartCondition_::INITIAL);
   setMatched(string_buf_);
@@ -148,89 +148,42 @@ letter [a-zA-Z]
   return Parser::STRING;
 }
 
-<STR>"\\n" {
+<STR>\\n {
   adjustStr();
   string_buf_.push_back('\n');
 }
 
-<STR>"\\t" {
+<STR>\\t {
   adjustStr();
   string_buf_.push_back('\t');
 }
 
-<STR>"\\"{digit}{3}  {
+<STR>\\{digit}{3}  {
   adjustStr();
-  std::string matched_str = matched();
-  matched_str.erase(0,1);
-  auto ascii = std::stoi(matched_str,nullptr,8);
-  char charac = static_cast<char>(ascii);
-  string_buf_ += charac;
+  std::string s = matched();
+  int ascii = (s[1]-'0') * 100 + (s[2]-'0') * 10 + (s[3]-'0') * 1;
+  char charac = char(ascii);
+  string_buf_.push_back(charac);
 }
 
-<STR>"\\\"" {
+<STR>\\\" {
   adjustStr();
   string_buf_.push_back('\"');
 }
-<STR>"\\\\" {
+<STR>\\\\ {
   adjustStr();
   string_buf_.push_back('\\');
 }
 
-<STR>"\\f___f\\" {
+<STR>\\[\t\n ]+\\ {
   adjustStr();
 }
 
-<STR>"\\^@" {
+<STR>\\\^[@A-Z\[\\\]\^_] {
   adjustStr();
-  string_buf_.push_back('\0');
-}
-<STR>"\\^G" {
-  adjustStr();
-  string_buf_.push_back('\a');
-}
-
-<STR>"\\^H" {
-  adjustStr();
-  string_buf_.push_back('\b');
-}
-
-<STR>"\\^I" {
-  adjustStr();
-  string_buf_.push_back('\t');
-}
-
-<STR>"\\^J" {
-  adjustStr();
-  string_buf_.push_back('\n');
-}
-
-<STR>"\\^K" {
-  adjustStr();
-  string_buf_.push_back('\v');
-}
-
-<STR>"\\^L" {
-  adjustStr();
-  string_buf_.push_back('\f');
-}
-
-
-<STR>"\\^M" {
-  adjustStr();
-  string_buf_.push_back('\r');
-}
-
-
-<STR>"\\^Z" {
-  adjustStr();
-  char eof = static_cast<char>(26);
-  string_buf_.push_back(eof);
-}
-
-
-<STR>"\\^[" {
-  adjustStr();
-  string_buf_.push_back('\t');
+  auto s = matched();
+  char charac = ((s[2] - '@') + 0);
+  string_buf_.push_back(charac);
 }
 
 <STR><<EOF>> {
