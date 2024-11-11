@@ -18,6 +18,8 @@ type::Ty *SimpleVar::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
 
   if (var_type_derived == nullptr){
       errormsg->Error(this->pos_, "undefined variable %s", this->sym_->Name().data());
+
+      return type::VoidTy::Instance();
   }
 
   return var_type_derived->ty_->ActualTy();
