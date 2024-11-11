@@ -6,12 +6,15 @@ namespace absyn {
 void AbsynTree::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
                            err::ErrorMsg *errormsg) const {
   /* TODO: Put your lab4 code here */
+  // 直接对AST进行语义分析
   this->root_->SemAnalyze(venv, tenv, 0, errormsg);
 }
 
 type::Ty *SimpleVar::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
                                 int labelcount, err::ErrorMsg *errormsg) const {
   /* TODO: Put your lab4 code here */
+
+  // search var entry in var table
   auto var_type = venv->Look(this->sym_);
 
   auto var_type_derived = dynamic_cast<env::VarEntry *>(var_type);
@@ -19,22 +22,24 @@ type::Ty *SimpleVar::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
   if (var_type_derived == nullptr){
       errormsg->Error(this->pos_, "undefined variable %s", this->sym_->Name().data());
 
-      return type::VoidTy::Instance();
+      return type::VoidTy::Instance();//avoid using nullptr
   }
 
-  return var_type_derived->ty_->ActualTy();
+  return var_type_derived->ty_;
 }
 
 type::Ty *FieldVar::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
                                int labelcount, err::ErrorMsg *errormsg) const {
   /* TODO: Put your lab4 code here */
+
+  // var must be a record type
   auto var_type = this->var_->SemAnalyze(venv, tenv, labelcount, errormsg);
 
   auto record_type = dynamic_cast<type::RecordTy *>(var_type->ActualTy());
 
   if (record_type == nullptr){
       errormsg->Error(this->pos_, "not a record type");
-      return type::VoidTy::Instance();
+      return type::VoidTy::Instance();  //avoid using nullptr, which will cause segfault
   }
 
   for (const auto & field : record_type->fields_->GetList()){
@@ -45,7 +50,7 @@ type::Ty *FieldVar::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
 
   errormsg->Error(this->pos_, "field %s doesn't exist",this->sym_->Name().data());
 
-  return type::VoidTy::Instance();
+  return type::VoidTy::Instance();  // no corresponding field , choose to return a void
 }
 
 type::Ty *SubscriptVar::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
@@ -56,15 +61,17 @@ type::Ty *SubscriptVar::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
 
   auto array_type = this->var_->SemAnalyze(venv, tenv, labelcount, errormsg)->ActualTy();
 
+  // index must be an integer
   if (index_exp_type != type::IntTy::Instance()){
       errormsg->Error(this->pos_, "index in subscipt var should be int");
   }
-
+  
+  // type of var must be an array type
   auto array_type_derived = dynamic_cast<type::ArrayTy *>(array_type->ActualTy());
 
   if (array_type_derived == nullptr){
       errormsg->Error(this->pos_, "array type required");
-      return type::VoidTy::Instance();  // 防止 后续分析使用 nullptr
+      return type::VoidTy::Instance();  // avoid using nullptr , directly return
   }
 
   auto element_type = array_type_derived->ty_->ActualTy();
@@ -99,6 +106,8 @@ type::Ty *StringExp::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
 type::Ty *CallExp::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
                               int labelcount, err::ErrorMsg *errormsg) const {
   /* TODO: Put your lab4 code here */
+
+  // corresponding function must exist
   auto fun_entry = venv->Look(func_);
 
   if (fun_entry == nullptr){
@@ -110,9 +119,10 @@ type::Ty *CallExp::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
 
   if (fun_entry_derived == nullptr){
       errormsg->Error(this->pos_, "function required");
-      return type::VoidTy::Instance();
+      return type::VoidTy::Instance();  // avoid using nullptr
   }
 
+  // check num of params
   if (fun_entry_derived->formals_->GetList().size() < this->args_->GetList().size()){
       errormsg->Error(this->pos_, "too many params in function %s",this->func_->Name().data());
       return fun_entry_derived->result_;
@@ -122,13 +132,15 @@ type::Ty *CallExp::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
       errormsg->Error(this->pos_, "para type mismatch");
       return fun_entry_derived->result_;
   }
-
+  
   auto expect_param_type_it = fun_entry_derived->formals_->GetList().begin();
 
   auto call_param_type_it = this->args_->GetList().begin();
 
+  // check type one by one
   while (expect_param_type_it != fun_entry_derived->formals_->GetList().end()){
-      if (!(*expect_param_type_it)->IsSameType((*call_param_type_it)->SemAnalyze(venv, tenv, labelcount, errormsg))) {
+    //FIXME: 注意到venv 中 FunctionEntry 的 Formal list中的Ty* 可能含有nullptr
+      if ((*expect_param_type_it) == nullptr || !(*expect_param_type_it)->IsSameType((*call_param_type_it)->SemAnalyze(venv, tenv, labelcount, errormsg))) {
           errormsg->Error(this->pos_, "para type mismatch");
       }
 
@@ -145,6 +157,7 @@ type::Ty *OpExp::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
   auto left_type = this->left_->SemAnalyze(venv, tenv, labelcount, errormsg);
   auto right_type = this->right_->SemAnalyze(venv, tenv, labelcount, errormsg);
   
+  // numerical option requires that both exp returns integer
   if (this->oper_ == Oper::PLUS_OP || this->oper_ == Oper::MINUS_OP ||
       this->oper_ == Oper::DIVIDE_OP || this->oper_ == Oper::TIMES_OP ||
       this->oper_ == Oper::AND_OP || this->oper_ == Oper::OR_OP){
@@ -155,32 +168,36 @@ type::Ty *OpExp::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
         return type::IntTy::Instance();
   }
 
+  // must be the same type
   if (!left_type->IsSameType(right_type)) {
       errormsg->Error(this->pos_, "same type required");
   }
-
+  
   return type::IntTy::Instance();
 }
 
 type::Ty *RecordExp::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
                                 int labelcount, err::ErrorMsg *errormsg) const {
   /* TODO: Put your lab4 code here */
+
+  // corresponding record type must exist in tenv table
   auto expected_type = tenv->Look(this->typ_);
 
   if (expected_type == nullptr){
       errormsg->Error(this->pos_, "undefined type %s", this->typ_->Name().data());
-      return type::VoidTy::Instance();
+      return type::VoidTy::Instance();  // avoid using nullptr to analyze
   }
 
   auto record_type = dynamic_cast<type::RecordTy *>(expected_type->ActualTy());
 
   if (record_type == nullptr){
-      errormsg->Error(this->pos_, "given type is not a record type in a record expression");
-      return type::VoidTy::Instance();
+      errormsg->Error(this->pos_, "record type required");
+      return type::VoidTy::Instance();  // avoid using nullptr to analyze
   }
 
+  // size check
   if (record_type->fields_->GetList().size() != this->fields_->GetList().size()){
-      errormsg->Error(this->pos_, "size of field list failed to match");
+      errormsg->Error(this->pos_, "size of fields mismatch");
   }
 
   auto absyn_list_it = this->fields_->GetList().begin();
@@ -207,6 +224,8 @@ type::Ty *RecordExp::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
 type::Ty *SeqExp::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
                              int labelcount, err::ErrorMsg *errormsg) const {
   /* TODO: Put your lab4 code here */
+
+  // return the last exp type
   type::Ty *last_exp_type = type::VoidTy::Instance();
 
   for (const auto & exp : this->seq_->GetList()){
@@ -254,15 +273,16 @@ type::Ty *IfExp::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
                             int labelcount, err::ErrorMsg *errormsg) const {
   /* TODO: Put your lab4 code here */
   if (this->elsee_ != nullptr){
-      //TODO: labelcount
       auto else_exp_type = this->elsee_->SemAnalyze(venv, tenv, labelcount, errormsg);
       auto then_exp_type = this->then_->SemAnalyze(venv, tenv, labelcount, errormsg);
       auto test_exp_type = this->test_->SemAnalyze(venv, tenv, labelcount, errormsg);
 
+      //test condition must return integer
       if (test_exp_type->ActualTy() != type::IntTy::Instance()){
           errormsg->Error(this->pos_, "test expression in if expression should return int type");   
       }
 
+      // type should match
       if (!then_exp_type->IsSameType(else_exp_type)) {
           errormsg->Error(this->pos_, "then exp and else exp type mismatch");
       }
@@ -272,10 +292,12 @@ type::Ty *IfExp::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
       auto then_exp_type = this->then_->SemAnalyze(venv, tenv, labelcount, errormsg);
       auto test_exp_type = this->test_->SemAnalyze(venv, tenv, labelcount, errormsg);
 
+      // test condition should return integer
       if (test_exp_type->ActualTy() != type::IntTy::Instance()) {
           errormsg->Error(this->pos_, "test expression in if expression should return int type");
       }
 
+      // return no value
       if (then_exp_type != type::VoidTy::Instance()){
           errormsg->Error(this->pos_, "if-then exp's body must produce no value");
       }
@@ -288,16 +310,16 @@ type::Ty *WhileExp::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
                                int labelcount, err::ErrorMsg *errormsg) const {
   /* TODO: Put your lab4 code here */
   // while exp do exp
-  //TODO: labelcount
   auto condition_type = this->test_->SemAnalyze(venv, tenv, labelcount, errormsg);
 
+  // test condition should return integer type
   if (condition_type->ActualTy() != type::IntTy::Instance()){
       errormsg->Error(this->pos_, "type of the result of the test expression in a while expression should be int");
   }
 
-  //TODO:labelcount
-  auto body_type = this->body_->SemAnalyze(venv, tenv, labelcount, errormsg);
-
+  auto body_type = this->body_->SemAnalyze(venv, tenv, labelcount + 1, errormsg);
+  
+  // while return no value
   if (body_type->ActualTy() != type::VoidTy::Instance()){
       errormsg->Error(this->pos_, "while body must produce no value");
   }
@@ -312,22 +334,22 @@ type::Ty *ForExp::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
   // for id := exp to exp do exp
   venv->BeginScope();
 
-  //TODO: labelcount
   auto low_bound_type = this->lo_->SemAnalyze(venv, tenv, labelcount, errormsg);
   auto high_bound_type = this->hi_->SemAnalyze(venv, tenv, labelcount, errormsg);
-
+  
+  // bound should be integer
   if (low_bound_type->ActualTy() != type::IntTy::Instance() || high_bound_type->ActualTy() != type::IntTy::Instance()){
       errormsg->Error(this->pos_, "for exp's range type is not integer");
   }
-
-  //TODO: readonly?
+  
+  // loop var must be readonly
   venv->Enter(this->var_, new env::VarEntry(type::IntTy::Instance(),true));
 
-  //TODO:labelcount?
-  this->body_->SemAnalyze(venv,tenv,labelcount,errormsg);
+  this->body_->SemAnalyze(venv,tenv,labelcount + 1,errormsg);
 
   venv->EndScope();
-
+  
+  // for exp returns no value
   return type::VoidTy::Instance();
 }
 
@@ -335,8 +357,9 @@ type::Ty *BreakExp::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
                                int labelcount, err::ErrorMsg *errormsg) const {
   /* TODO: Put your lab4 code here */
 
-  // TODO: maybe something wrong?
-  // labelcount ?
+  if (labelcount == 0){
+      errormsg->Error(this->pos_, "break exp must be inside a loop");
+  }
 
   return type::VoidTy::Instance();
 }
@@ -349,17 +372,14 @@ type::Ty *LetExp::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
   tenv->BeginScope();
 
   for (const auto & dec : this->decs_->GetList()){
-    //TODO: what does labelcount mean?
       dec->SemAnalyze(venv, tenv, labelcount, errormsg);
   }
 
-  // TODO: what does labelcount mean?
   auto result_type = this->body_->SemAnalyze(venv, tenv, labelcount, errormsg);
 
   venv->EndScope();
   tenv->EndScope();
 
-  // TODO: maybe something wrong?
   return result_type;
 }
 
@@ -369,19 +389,18 @@ type::Ty *ArrayExp::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
 
   // array-type [ exp ] of exp
 
-  //TODO: what does labelcount mean?
-  auto index_exp_type = this->size_->SemAnalyze(venv, tenv, labelcount, errormsg);
+  auto size_exp_type = this->size_->SemAnalyze(venv, tenv, labelcount, errormsg);
 
-  //TODO: what does labelcount mean?
   auto init_exp_type = this->init_->SemAnalyze(venv, tenv, labelcount, errormsg);
-
+  
+  // type must be an array type
   auto array_type = tenv->Look(this->typ_);
 
   type::ArrayTy * array_type_derived = dynamic_cast<type::ArrayTy *>(array_type->ActualTy());
 
   if (array_type_derived == nullptr){
       errormsg->Error(this->pos_, "array type required");
-      return type::VoidTy::Instance();
+      return type::VoidTy::Instance();  // avoid using nullptr , following execution will fetch element_type
   }
 
   auto element_type = array_type_derived->ty_;
@@ -390,7 +409,7 @@ type::Ty *ArrayExp::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
       errormsg->Error(this->pos_, "type mismatch");
   }
 
-  if (index_exp_type->ActualTy() != type::IntTy::Instance()){
+  if (size_exp_type->ActualTy() != type::IntTy::Instance()){
       errormsg->Error(this->pos_, "type of the size of an array should be int");
   }
 
@@ -408,7 +427,8 @@ void FunctionDec::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
   /* TODO: Put your lab4 code here */
   std::unordered_map<sym::Symbol *, env::FunEntry *> fun_name_entry_map;
   std::unordered_set<absyn::FunDec *> skip_fun_dec;
-
+  
+  // add header to venv
   for (const auto &absyn_fun_dec : this->functions_->GetList()) {
       auto exist_entry = venv->Look(absyn_fun_dec->name_);
 
@@ -418,6 +438,8 @@ void FunctionDec::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
           continue;
       }
 
+      // ty_list might contain nullptr!!!!!
+      // undefined behaviour? segfault...
       auto ty_list = absyn_fun_dec->params_->MakeFormalTyList(tenv, errormsg);
 
       auto fun_entry = new env::FunEntry(ty_list, type::VoidTy::Instance());
@@ -425,8 +447,15 @@ void FunctionDec::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
       if (absyn_fun_dec->result_ != nullptr){
           auto return_type = tenv->Look(absyn_fun_dec->result_);
 
-          fun_entry->result_ = return_type->ActualTy();
+          // return type might be nullptr !!!
+
+          if (return_type == nullptr){
+              errormsg->Error(this->pos_, "undefined type %s", absyn_fun_dec->result_->Name().data());
+          } else {
+            fun_entry->result_ = return_type;
+          }
       }
+      // ensures that result ty won't be nullptr
 
       venv->Enter(absyn_fun_dec->name_, fun_entry);
 
@@ -448,7 +477,17 @@ void FunctionDec::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
     auto semant_param_it = fun_entry->formals_->GetList().begin();
 
     while(absyn_param_it != absyn_fun_dec->params_->GetList().end()){
-        venv->Enter((*absyn_param_it)->name_, new env::VarEntry((*semant_param_it)->ActualTy()));
+        // notice that the Ty* in formals_ may be nullptr!
+        // venv->Enter((*absyn_param_it)->name_, new env::VarEntry((*semant_param_it)->ActualTy()));
+        //FIXME: formals的生成依赖于MakeFormal的函数 函数中如果未在tenv中找到对应类型会直接在列表中加入nullptr
+        //       nullptr 意味着这可能在函数的scope内 venv表中有一个var entry的Ty* 为nullptr
+        //       这里的解决方案暂时为将Ty* 设为 VoidTy
+        //       另一种方法是设置各种 absyn中的Var 检测在venv中获取到entry时 Ty* 是否为nullptr 是的话返回某个特定类
+        if (*semant_param_it == nullptr){
+            venv->Enter((*absyn_param_it)->name_, new env::VarEntry(type::VoidTy::Instance()));
+        } else {
+            venv->Enter((*absyn_param_it)->name_, new env::VarEntry((*semant_param_it)->ActualTy()));
+        }
 
         absyn_param_it++;
         semant_param_it++;
@@ -471,13 +510,17 @@ void VarDec::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv, int labelcount,
 
   // VAR ID := exp / VAR ID : type := exp
 
-  // what do labelcount do ?
   auto exp_type = this->init_->SemAnalyze(venv,tenv,labelcount,errormsg);
 
   if (this->typ_ != nullptr){
       auto var_type = tenv->Look(this->typ_);
 
-      if (!var_type->IsSameType(exp_type)) {
+      // var_type may be nullptr
+      if (var_type == nullptr){
+          errormsg->Error(this->pos_, "undefined type %s", this->typ_->Name().data());
+      }
+
+      if (var_type && !var_type->IsSameType(exp_type)) {
           errormsg->Error(this->pos_, "type mismatch");
       }
   }
@@ -486,6 +529,7 @@ void VarDec::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv, int labelcount,
       errormsg->Error(this->pos_, "init should not be nil without type specified");
   }
 
+  // ensures that exp_type will never be nullptr
   venv->Enter(this->var_, new env::VarEntry(exp_type->ActualTy()));
 }
 
@@ -493,26 +537,37 @@ void TypeDec::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv, int labelcount,
                          err::ErrorMsg *errormsg) const {
   /* TODO: Put your lab4 code here */
   std::list<type::NameTy*> indirect_types;
+  std::unordered_set<absyn::NameAndTy *> skip_types;
 
   // type ID = array of ID / ID / { ID : ID, ID : ID ...}
+  // add header to tenv
   for (const auto & absyn_name_ty_ptr : this->types_->GetList()){
       auto entry = tenv->Look(absyn_name_ty_ptr->name_);
 
       if (entry != nullptr){
           errormsg->Error(this->pos_, "two types have the same name");
+          skip_types.insert(absyn_name_ty_ptr);
           continue;
       }
 
       auto ty = new type::NameTy(absyn_name_ty_ptr->name_, nullptr);
+
       tenv->Enter(absyn_name_ty_ptr->name_, ty);
   }
 
   for (const auto & absyn_name_ty_ptr : this->types_->GetList()){
+    if (skip_types.find(absyn_name_ty_ptr) != skip_types.end()){
+        // do not analyze duplicated type dec
+        continue;
+    }
+
       auto l_type = tenv->Look(absyn_name_ty_ptr->name_);
 
       auto l_type_derived = dynamic_cast<type::NameTy *>(l_type);
 
       // what will happen if r_type gets a nullptr?
+      // in type::NameTy & type::ArrayTy & type::RecordTy ensures th at 
+      // when analyze a absyn::Ty won't get a nullptr
       auto r_type = absyn_name_ty_ptr->ty_->SemAnalyze(tenv,errormsg);
 
       // NameTy Case
@@ -528,6 +583,8 @@ void TypeDec::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv, int labelcount,
   // TODO:cycle ?
 
   // cycle check
+  // cycle will be detected but not cut down
+  // is there any problem?
   std::unordered_set<type::Ty *> set;
   bool isCycleFound = false;
   for (auto type_to_check : indirect_types) {
@@ -548,11 +605,6 @@ void TypeDec::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv, int labelcount,
       if (isCycleFound){
           break;
       }
-
-      // ?
-      // origin->ty_ = origin->ActualTy();
-
-      //what if the pointer finally a nullptr?
   }
 }
 
@@ -567,8 +619,14 @@ type::Ty *NameTy::SemAnalyze(env::TEnvPtr tenv, err::ErrorMsg *errormsg) const {
 
   if (type == nullptr){
       errormsg->Error(this->pos_, "undefined type %s", this->name_->Name().data());
+
+      // undefined type , default void
+      type = type::VoidTy::Instance();
   }
   // transfer
+
+  // type won't be a nullptr 
+  // it's pretty safe
   return type;
 }
 
@@ -587,11 +645,16 @@ type::Ty *RecordTy::SemAnalyze(env::TEnvPtr tenv,
 
     if (type == nullptr){
         errormsg->Error(this->pos_, "undefined type %s", type_name->Name().data());
+
+        // undefined type , default set it to void
+        type = type::VoidTy::Instance();
     }
 
     type_field_list->Append(new type::Field(field_name, type));
   }
-
+  
+  // now the record type will not contain any nullptr
+  // it's pretty safe
   return new type::RecordTy(type_field_list);
 }
 
@@ -604,10 +667,16 @@ type::Ty *ArrayTy::SemAnalyze(env::TEnvPtr tenv,
 
   if (element_type == nullptr){
       errormsg->Error(this->pos_, "undefined type %s", this->array_->Name().data());
+
+      // default set the element_type to void type
+      element_type = type::VoidTy::Instance();
   }
 
   // transfer Ty in Absyn Tree to 
   //          Ty in type used in semantic analysis
+
+  // now the return type will not contain nullptr in it
+  // it's pretty safe
 
   return new type::ArrayTy(element_type);
 }
