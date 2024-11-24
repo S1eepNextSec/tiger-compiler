@@ -31,6 +31,37 @@ void buildMain(std::shared_ptr<llvm::Module> ir_module)
     builder.SetInsertPoint(entry);
 
     // TODO
+    auto int32_ty = llvm::Type::getInt32Ty(ir_module->getContext());
+
+    auto var_a = builder.CreateAlloca(int32_ty, nullptr, "a");
+    auto var_b = builder.CreateAlloca(int32_ty, nullptr, "b");
+
+    builder.CreateStore(llvm::ConstantInt::get(int32_ty, 1),var_a);
+    builder.CreateStore(llvm::ConstantInt::get(int32_ty, 2),var_b);
+
+    auto value_a = builder.CreateLoad(int32_ty, var_a);
+    auto value_b = builder.CreateLoad(int32_ty, var_b);
+
+    auto condition = builder.CreateICmpSLT(value_a, value_b);
+
+    auto branch_true_a_LT_b = llvm::BasicBlock::Create(ir_module->getContext(), "branch_true_a_LT_b", main);
+    auto branch_false_a_LT_b = llvm::BasicBlock::Create(ir_module->getContext(), "branch_false_a_LT_b", main);
+
+    builder.CreateCondBr(condition, branch_true_a_LT_b, branch_false_a_LT_b);
+
+    builder.SetInsertPoint(branch_true_a_LT_b);
+
+    builder.CreateStore(llvm::ConstantInt::get(int32_ty, 3), var_b);
+    builder.CreateBr(branch_false_a_LT_b);
+
+    builder.SetInsertPoint(branch_false_a_LT_b);
+
+    value_a = builder.CreateLoad(int32_ty, var_a);
+    value_b = builder.CreateLoad(int32_ty, var_b);
+
+    auto a_b_add_res = builder.CreateAdd(value_a, value_b);
+
+    builder.CreateRet(a_b_add_res);
 }
 
 void buildFunction(std::shared_ptr<llvm::Module> ir_module)
