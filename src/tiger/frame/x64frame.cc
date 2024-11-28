@@ -78,6 +78,10 @@ int X64RegManager::WordSize() { return 8; }
 
 temp::Temp *X64RegManager::FramePointer() { return regs_[FP]; }
 
+/**
+ * x86 Frame中每一个变量的具体访问管理
+ * 包括本地变量以及传入的参数
+ */
 class InFrameAccess : public Access {
 public:
   int offset;
@@ -89,7 +93,9 @@ public:
   /* TODO: Put your lab5-part1 code here */
 };
 
-
+// inherited from Frame Class
+// Frame 定义独立于各个平台具体的栈管理形式
+// 继承 Frame 来实现具体平台中的栈帧管理
 class X64Frame : public Frame {
 public:
   X64Frame(temp::Label *name, std::list<frame::Access *> *formals)
@@ -100,20 +106,34 @@ public:
   [[nodiscard]] std::list<frame::Access *> *Formals() const override {
     return formals_;
   }
+
+  /**
+   * 在栈帧中分配一个本地变量
+   */
   frame::Access *AllocLocal(bool escape) override {
     frame::Access *access;
 
     offset_ -= reg_manager->WordSize();
-    access = new InFrameAccess(offset_, this);
+    access = new InFrameAccess(offset_, this);  //  构造InFrameAccess来记录对本地变量的访问方式
 
     return access;
   }
+
+  /**
+   * 为Callee在Caller Frame中分配一段空间
+   */
   void AllocOutgoSpace(int size) override {
     if (size > outgo_size_)
       outgo_size_ = size;
   }
 };
 
+/**
+ * 为一个 Function 构造一个 Frame 来记录其在栈中的存储形式
+ * @param name: 函数名
+ * @param formals: 形参逃逸列表 true表示应该在栈中存储 false表示应在寄存器中存储
+ * @return 构造出的栈帧
+ */
 frame::Frame *NewFrame(temp::Label *name, std::list<bool> formals) {
   /* TODO: Put your lab5-part1 code here */
 }

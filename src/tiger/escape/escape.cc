@@ -7,6 +7,9 @@ void EscFinder::FindEscape() { absyn_tree_->Traverse(env_.get()); }
 
 namespace absyn {
 
+// 每个syntax tree node节点检查自己使用的已经定义的变量
+// 如果该变量定义的static scope depth小于当前节点的depth
+// 该变量必须存放在栈上 即escape
 void AbsynTree::Traverse(esc::EscEnvPtr env) {
   /* TODO: Put your lab5-part1 code here */
 }

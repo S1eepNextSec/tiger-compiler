@@ -16,6 +16,11 @@ class Exp;
 class ValAndTy;
 class Level;
 
+/**
+ * Frame中对变量的访问管理
+ * Level* 记录变量所在的层级 辅助 static link计算
+ * frame::Access* 记录对frame中变量的访问管理 
+ */
 class Access {
 public:
   Level *level_;
@@ -26,6 +31,12 @@ public:
   static Access *AllocLocal(Level *level, bool escape);
 };
 
+/**
+ * Level用以记录 Function 对应的 Frame 在 源码 static scope 中的函数嵌套层次
+ * 层次信息辅助判断 static link 
+ * Level* parent_ 指向该函数所在的父函数(该函数在父函数中定义)
+ * frame::Frame * frame_ 为对应的函数 Frame
+ */
 class Level {
 public:
   frame::Frame *frame_;
@@ -69,11 +80,11 @@ public:
   void OutputIR(std::string_view filename);
 
 private:
-  std::unique_ptr<absyn::AbsynTree> absyn_tree_;
+  std::unique_ptr<absyn::AbsynTree> absyn_tree_;  // AST
   std::unique_ptr<err::ErrorMsg> errormsg_;
-  std::unique_ptr<Level> main_level_;
-  std::unique_ptr<env::TEnv> tenv_;
-  std::unique_ptr<env::VEnv> venv_;
+  std::unique_ptr<Level> main_level_; //  main函数 Level信息 / Level树入口
+  std::unique_ptr<env::TEnv> tenv_; //type environment
+  std::unique_ptr<env::VEnv> venv_; //variable & function environment
 
   // Fill base symbol for var env and type env
   void FillBaseVEnv();
