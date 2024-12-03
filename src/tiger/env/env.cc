@@ -125,6 +125,10 @@ void ProgTr::FillBaseVEnv() {
 
 } // namespace tr
 
+/**
+ * FunEntry构造函数
+ * 同时生成LLVM中的函数
+ */
 env::FunEntry::FunEntry(tr::Level *level, type::TyList *formals,
                         type::Ty *result, std::string func_name)
     : formals_(formals), result_(result), level_(level) {

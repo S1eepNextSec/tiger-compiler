@@ -73,8 +73,9 @@ protected:
 class Access {
 public:
   /* TODO: Put your lab5-part1 code here */
+    virtual int get_offset() { return 0; }
 
-  virtual ~Access() = default;
+    virtual ~Access() = default;
 };
 
 // 1 Frame -> 1 Function

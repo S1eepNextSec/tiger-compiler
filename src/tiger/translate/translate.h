@@ -50,6 +50,8 @@ public:
   void set_sp(llvm::Value *sp) { frame_->sp = sp; }
 
   /* TODO: Put your lab5-part1 code here */
+
+  std::string get_global_frame_size_name() { return frame_->name_->Name() + "_framesize_global"; }
 };
 
 class ProgTr {

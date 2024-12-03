@@ -91,6 +91,7 @@ public:
       : offset(offset), parent_frame(parent) {}
 
   /* TODO: Put your lab5-part1 code here */
+  int get_offset() override { return offset; }
 };
 
 // inherited from Frame Class
@@ -136,7 +137,41 @@ public:
  */
 frame::Frame *NewFrame(temp::Label *name, std::list<bool> formals) {
   /* TODO: Put your lab5-part1 code here */
-}
+  // formals 不包含 static link
+  auto x64_frame = new frame::X64Frame(name, nullptr);
 
+  std::list<frame::Access *> *formals_list = new std::list<frame::Access *>;
+  x64_frame->formals_ = formals_list;
+
+  int offset = 8;
+
+  // static link
+  formals_list->push_back(new frame::InFrameAccess(offset, x64_frame));
+
+  offset += 8;
+
+  for (const auto & is_escape : formals){
+    if (is_escape || ! is_escape){  // 不管是否 escape 都先栈上存储
+        auto in_frame_access = new frame::InFrameAccess(offset, x64_frame);
+        offset += 8;
+
+        formals_list->push_back(in_frame_access);
+    }
+  }
+
+  // Global Variable Frame Size unset
+  // stack pointer unset
+
+  auto global_frame_size = (llvm::GlobalVariable *)ir_module->getOrInsertGlobal(name->Name() + "_framesize_global",
+                                                                                llvm::Type::getInt64Ty(ir_module->getContext()));
+
+  x64_frame->framesize_global = global_frame_size;
+
+  // global_frame_size value not decided yet
+  // stack pointer unset yet
+  
+
+  return x64_frame;
+}
 
 } // namespace frame
