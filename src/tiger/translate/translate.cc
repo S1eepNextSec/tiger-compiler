@@ -112,6 +112,7 @@ int getActualFramesize(tr::Level *level) {
  * 
  * - Prob_12.6:
  *   - 需要调整类型检查 避免不同类型的比较 / 逻辑运算出现
+ *   - 设计exp的地方需要检查如果是 i32 是不是需要将 可能返回的 i1 转换为 i32
  */
 inline auto getLLVMConstantInt1(int value) -> llvm::Constant *
 {
@@ -901,6 +902,10 @@ tr::ValAndTy *SubscriptVar::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
 
   auto index = index_val_ty->val_;
 
+  if (index->getType()->isIntegerTy(1)){
+      index = ir_builder->CreateZExt(index, getLLVMTypeInt32());
+  }
+
   auto array_element_p_addr_llvm = array_val_ty->val_;
 
   auto array_element_p_llvm = ir_builder->CreateLoad(array_element_p_addr_llvm->getType()->getPointerElementType(),
@@ -1433,6 +1438,10 @@ tr::ValAndTy *RecordExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
       } else {
         auto val_llvm = exp_val_ty->val_;
 
+        if (val_llvm->getType()->isIntegerTy(1)){
+            val_llvm = ir_builder->CreateZExt(val_llvm, getLLVMTypeInt32());
+        }
+
         const auto &ty = exp_val_ty->ty_;
 
         ir_builder->CreateStore(val_llvm, element_addr_p_llvm);
@@ -1469,6 +1478,13 @@ tr::ValAndTy *AssignExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
   auto l_value_val_ty = this->var_->Translate(venv, tenv, level, errormsg);
 
   auto exp_val_ty = this->exp_->Translate(venv, tenv, level, errormsg);
+
+  auto exp_val = exp_val_ty->val_;
+
+  if (exp_val_ty->ty_->ActualTy() == type::IntTy::Instance() &&
+      exp_val->getType()->isIntegerTy(1)){
+      exp_val = ir_builder->CreateZExt(exp_val, getLLVMTypeInt32());
+  }
 
   ir_builder->CreateStore(exp_val_ty->val_,
                           l_value_val_ty->val_);
@@ -1595,9 +1611,21 @@ tr::ValAndTy *IfExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
       llvm::ConstantPointerNull::get(static_cast<llvm::PointerType*>(else_body_ret_val_llvm->ty_->GetLLVMType())) : 
       then_body_ret_val_llvm->val_;
 
+    if (then_body_ret_val_llvm->ty_->ActualTy() == type::IntTy::Instance() && 
+        then_body_ret_val_llvm->val_->getType()->isIntegerTy(1)){
+        then_body_ret_val = ir_builder->CreateZExt(then_body_ret_val,
+                                                   getLLVMTypeInt32());
+    }
+
     auto else_body_ret_val = else_body_ret_val_llvm->ty_->ActualTy() ==type::NilTy::Instance() ? 
       llvm::ConstantPointerNull::get(static_cast<llvm::PointerType*>(then_body_ret_val_llvm->ty_->GetLLVMType())) : 
       else_body_ret_val_llvm->val_;
+
+    if (else_body_ret_val_llvm->ty_->ActualTy() == type::IntTy::Instance() &&
+        else_body_ret_val_llvm->val_->getType()->isIntegerTy(1)) {
+        else_body_ret_val = ir_builder->CreateZExt(else_body_ret_val,
+                                                   getLLVMTypeInt32());
+    }
 
     auto phi = ir_builder->CreatePHI(ret_type->GetLLVMType(),
                                      2);
@@ -1699,10 +1727,18 @@ tr::ValAndTy *ForExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
   auto lo_val_ty = this->lo_->Translate(venv, tenv, level, errormsg);
   auto hi_val_ty = this->hi_->Translate(venv, tenv, level, errormsg);
 
-  const auto & lo_llvm = lo_val_ty->val_;
-  const auto & hi_llvm = hi_val_ty->val_;
+  auto lo_llvm = lo_val_ty->val_;
+  auto hi_llvm = hi_val_ty->val_;
   const auto & lo_ty = lo_val_ty->ty_;
   const auto & hi_ty = hi_val_ty->ty_;
+
+  if (lo_llvm->getType()->isIntegerTy(1)){
+      lo_llvm = ir_builder->CreateZExt(lo_llvm, getLLVMTypeInt32());
+  }
+
+  if (hi_llvm->getType()->isIntegerTy(1)) {
+      hi_llvm = ir_builder->CreateZExt(hi_llvm, getLLVMTypeInt32());
+  }
 
   venv->BeginScope();
 
@@ -1870,10 +1906,17 @@ tr::ValAndTy *ArrayExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
   auto init_val_ty = this->init_->Translate(venv, tenv, level, errormsg);
 
   llvm::Value *init_value = nullptr;
+  llvm::Value *size_value = size_val_ty->val_;
+
+  if (size_value->getType()->isIntegerTy(1)){
+      size_value = ir_builder->CreateZExt(size_value, getLLVMTypeInt32());
+  }
 
   // FIXME: 如何保证得到的init_val_ty->val_ 必定要么是 int32 要么是 int64 ?
-
-  if (init_val_ty->val_->getType()->isIntegerTy(32)){
+  if (init_val_ty->val_->getType()->isIntegerTy(1)){
+      init_value = ir_builder->CreateZExt(init_val_ty->val_,
+                                          getLLVMTypeInt64());
+  } else if (init_val_ty->val_->getType()->isIntegerTy(32)){
       init_value = ir_builder->CreateSExt(init_val_ty->val_,
                                           getLLVMTypeInt64());
   } else {
@@ -1881,7 +1924,7 @@ tr::ValAndTy *ArrayExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
   }
 
   auto array_addr_llvm_int64 = ir_builder->CreateCall(init_array,
-                                                      {size_val_ty->val_,
+                                                      {size_value,
                                                        init_value});
 
   auto type_entry = tenv->Look(this->typ_);
