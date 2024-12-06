@@ -105,6 +105,42 @@ int getActualFramesize(tr::Level *level) {
  * 
  */
 
+/**
+ * - Prob_12.6:
+ *   去除使用 select IR 的部分
+ *   布尔相关的运算向上传递 i1
+ */
+
+inline auto getLLVMConstantInt32(int value) -> llvm::Constant *
+{
+    return llvm::ConstantInt::get(llvm::Type::getInt32Ty(ir_module->getContext()), value);
+}
+
+inline auto getLLVMConstantInt64(long long value) -> llvm::Constant *
+{
+    return llvm::ConstantInt::get(llvm::Type::getInt64Ty(ir_module->getContext()), value);
+}
+
+inline auto getLLVMTypeInt32() -> llvm::Type *
+{
+    return llvm::Type::getInt32Ty(ir_module->getContext());
+}
+
+inline auto getLLVMTypeInt64() -> llvm::Type *
+{
+    return llvm::Type::getInt64Ty(ir_module->getContext());
+}
+
+inline auto getLLVMTypeInt32Ptr() -> llvm::PointerType *
+{
+    return llvm::Type::getInt32PtrTy(ir_module->getContext());
+}
+
+inline auto getLLVMTypeInt64Ptr() -> llvm::PointerType *
+{
+    return llvm::Type::getInt64PtrTy(ir_module->getContext());
+}
+
 namespace tr {
 
 inline void generateRuntimeFunction(){
@@ -136,6 +172,7 @@ inline void generateRuntimeFunction(){
                                           "string_equal",
                                           *ir_module);
 }
+
 
 inline llvm::Value *generateGetGlobalFramesizeIR(frame::Frame *frame)
 {
@@ -426,8 +463,9 @@ void FunctionDec::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
           result_ty = tenv->Look(absyn_fun_dec->result_)->ActualTy();
       }
 
-      std::vector<llvm::Type *> param_type_llvm_list = {llvm::Type::getInt64Ty(ir_module->getContext()),
-                                                        llvm::Type::getInt64Ty(ir_module->getContext())};
+      // last_sp & static link
+      std::vector<llvm::Type *> param_type_llvm_list = {getLLVMTypeInt64(),
+                                                        getLLVMTypeInt64()};
 
       for (const auto & param_ty : ty_list->GetList()){
           param_type_llvm_list.push_back(param_ty->GetLLVMType());
@@ -508,11 +546,10 @@ void FunctionDec::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
       auto sl_offset = (*var_access_it)->get_offset();
 
       auto static_link_addr_llvm_int64 = ir_builder->CreateAdd(last_sp_llvm,
-                                                               llvm::ConstantInt::get(llvm::Type::getInt64Ty(ir_module->getContext()),
-                                                                                      sl_offset));
+                                                               getLLVMConstantInt64(sl_offset));
 
       auto static_link_addr_llvm = ir_builder->CreateIntToPtr(static_link_addr_llvm_int64,
-                                                              llvm::Type::getInt64PtrTy(ir_module->getContext()));
+                                                              getLLVMTypeInt64Ptr());
 
       ir_builder->CreateStore((llvm::Value* )arg_llvm,
                               static_link_addr_llvm);
@@ -530,8 +567,7 @@ void FunctionDec::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
         auto var_name_symbol = (*formal_name_it)->name_;
 
         auto var_addr_llvm_int64 = ir_builder->CreateAdd(last_sp_llvm,
-                                                         llvm::ConstantInt::get(llvm::Type::getInt64Ty(ir_module->getContext()),
-                                                                                offset));
+                                                         getLLVMConstantInt64(offset));
 
         auto var_addr_llvm = ir_builder->CreateIntToPtr(var_addr_llvm_int64,
                                                         llvm::PointerType::get((*ty)->GetLLVMType(),0));
@@ -580,7 +616,6 @@ void VarDec::Translate(env::VEnvPtr venv, env::TEnvPtr tenv, tr::Level *level,
 
   const auto & exp_value_llvm = exp_val_ty->val_;
   const auto & exp_ty = exp_val_ty->ty_;
-  // const auto & last_basic_block = exp_val_ty->last_bb_; // ??
 
   // type check start
   if (this->typ_ != nullptr) {
@@ -631,8 +666,7 @@ void VarDec::Translate(env::VEnvPtr venv, env::TEnvPtr tenv, tr::Level *level,
   const auto &offset = tr_access->access_->get_offset();
 
   auto local_var_offset = ir_builder->CreateAdd(framesize,
-                                                llvm::ConstantInt::get(llvm::Type::getInt64Ty(ir_module->getContext()),
-                                                                       offset));
+                                                getLLVMConstantInt64(offset));
 
   auto frame_sp = level->get_sp();
 
@@ -704,12 +738,6 @@ type::Ty *ArrayTy::Translate(env::TEnvPtr tenv, err::ErrorMsg *errormsg) const {
       element_type = type::VoidTy::Instance();
   }
 
-  // transfer Ty in Absyn Tree to
-  //          Ty in type used in semantic analysis
-
-  // now the return type will not contain nullptr in it
-  // it's pretty safe
-
   return new type::ArrayTy(element_type);
 }
 
@@ -747,13 +775,12 @@ tr::ValAndTy *SimpleVar::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
       auto last_sp = ir_builder->CreateAdd(cur_frame_sp, frame_size);
   
       auto sl_addr_llvm_int64 = ir_builder->CreateAdd(last_sp,
-                                                      llvm::ConstantInt::get(llvm::Type::getInt64Ty(ir_module->getContext()),
-                                                                             8));
+                                                      getLLVMConstantInt64(8));
 
       auto sl_addr_llvm = ir_builder->CreateIntToPtr(sl_addr_llvm_int64,
-                                                     llvm::Type::getInt64PtrTy(ir_module->getContext()));
+                                                     getLLVMTypeInt64Ptr());
 
-      auto cur_sl = ir_builder->CreateLoad(llvm::Type::getInt64Ty(ir_module->getContext()),
+      auto cur_sl = ir_builder->CreateLoad(getLLVMTypeInt64(),
                                            sl_addr_llvm);
 
       cur_frame_sp = cur_sl;
@@ -767,8 +794,7 @@ tr::ValAndTy *SimpleVar::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
   auto frame_size = tr::generateGetGlobalFramesizeIR(cur_level->frame_);
 
   auto var_offset = ir_builder->CreateAdd(frame_size,
-                                          llvm::ConstantInt::get(llvm::Type::getInt64Ty(ir_module->getContext()),
-                                                                 offset),
+                                          getLLVMConstantInt64(offset),
                                           this->sym_->Name() + "_offset");
 
   auto var_addr_llvm_int64 = ir_builder->CreateAdd(cur_frame_sp,
@@ -832,8 +858,8 @@ tr::ValAndTy *FieldVar::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
   // element_p : element *
   auto element_p = ir_builder->CreateGEP(record_p->getType()->getPointerElementType(),
                                          record_p,
-                                         {llvm::ConstantInt::get(llvm::Type::getInt32Ty(ir_module->getContext()), 0),
-                                          llvm::ConstantInt::get(llvm::Type::getInt32Ty(ir_module->getContext()), element_index)});
+                                         {getLLVMConstantInt32(0),
+                                          getLLVMConstantInt32(element_index)});
 
   // 得到对应域的地址
   // 返回地址
@@ -903,7 +929,7 @@ tr::ValAndTy *IntExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
   /**
    * 生成LLVM常量返回
    */
-  auto int_val = llvm::ConstantInt::get(llvm::Type::getInt32Ty(ir_module->getContext()),
+  auto int_val = llvm::ConstantInt::get(getLLVMTypeInt32(),
                                         this->val_);
 
   return new tr::ValAndTy(int_val, type::IntTy::Instance());
@@ -963,13 +989,12 @@ tr::ValAndTy *CallExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
       auto frame_size = tr::generateGetGlobalFramesizeIR(current_level->frame_);
 
       auto sl_offset = ir_builder->CreateAdd(frame_size,
-                                             llvm::ConstantInt::get(llvm::Type::getInt64Ty(ir_module->getContext()),
-                                                                    8));
+                                             getLLVMConstantInt64(8));
 
       auto sl_addr_llvm_int64 = ir_builder->CreateAdd(sl_search_sp, sl_offset);
 
       auto sl_addr_llvm = ir_builder->CreateIntToPtr(sl_addr_llvm_int64,
-                                                     llvm::Type::getInt64PtrTy(ir_module->getContext()));
+                                                     getLLVMTypeInt64Ptr());
 
       sl_search_sp = ir_builder->CreateLoad(sl_addr_llvm->getType()->getPointerElementType(),
                                             sl_addr_llvm);
@@ -996,6 +1021,11 @@ tr::ValAndTy *CallExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
   // return nullptr;
 }
 
+/**
+ * OpExp 原本设计是比较运算以及逻辑运算全部都通过 select 返回 int32的结果
+ *       改为比较运算以及逻辑运算都返回 i1 的结果
+ *       如果碰到需要将比较运算的结果参与到i32的运算
+ */
 tr::ValAndTy *OpExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
                                tr::Level *level,
                                err::ErrorMsg *errormsg) const {
@@ -1141,13 +1171,13 @@ tr::ValAndTy *OpExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
     // 在类型检查的时候保证这里不会出现 Nil = Nil 的情况
     if (left_ty->ActualTy() == type::NilTy::Instance() && typeid(*right_ty) == typeid(type::RecordTy) ||
         right_ty->ActualTy() == type::NilTy::Instance() && typeid(*left_ty) == typeid(type::RecordTy)){
-        auto addr_int64 = left_ty->ActualTy() == type::NilTy::Instance() ? ir_builder->CreatePtrToInt(right_val, llvm::Type::getInt64Ty(ir_module->getContext())) : ir_builder->CreatePtrToInt(left_val, llvm::Type::getInt64Ty(ir_module->getContext()));
+        auto addr_int64 = left_ty->ActualTy() == type::NilTy::Instance() ? ir_builder->CreatePtrToInt(right_val, getLLVMTypeInt64()) : ir_builder->CreatePtrToInt(left_val, getLLVMTypeInt64());
 
-        auto res = ir_builder->CreateICmpEQ(addr_int64, llvm::ConstantInt::get(llvm::Type::getInt64Ty(ir_module->getContext()), 0));
+        auto res = ir_builder->CreateICmpEQ(addr_int64, getLLVMConstantInt64(0));
 
         auto cmp_res = ir_builder->CreateSelect(res,
-                                                llvm::ConstantInt::get(llvm::Type::getInt32Ty(ir_module->getContext()), 1),
-                                                llvm::ConstantInt::get(llvm::Type::getInt32Ty(ir_module->getContext()), 0));
+                                                getLLVMConstantInt32(1),
+                                                getLLVMConstantInt32(0));
 
         return new tr::ValAndTy(cmp_res, type::IntTy::Instance());
     }
@@ -1164,10 +1194,8 @@ tr::ValAndTy *OpExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
     auto res = ir_builder->CreateICmpEQ(left_val_ty->val_,right_val_ty->val_);
 
     auto cmp_res = ir_builder->CreateSelect(res,
-                                            llvm::ConstantInt::get(llvm::Type::getInt32Ty(ir_module->getContext()),
-                                                                   1),
-                                            llvm::ConstantInt::get(llvm::Type::getInt32Ty(ir_module->getContext()),
-                                                                   0));
+                                            getLLVMConstantInt32(1),
+                                            getLLVMConstantInt32(0));
 
     return new tr::ValAndTy(cmp_res, type::IntTy::Instance());
   }
@@ -1183,11 +1211,11 @@ tr::ValAndTy *OpExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
           right_ty->ActualTy() == (type::NilTy::Instance()) && typeid(*left_ty) == typeid(type::RecordTy)) {
           auto addr_int64 = left_ty->IsSameType(type::NilTy::Instance()) ? ir_builder->CreatePtrToInt(right_val, llvm::Type::getInt64Ty(ir_module->getContext())) : ir_builder->CreatePtrToInt(left_val, llvm::Type::getInt64Ty(ir_module->getContext()));
 
-          auto res = ir_builder->CreateICmpNE(addr_int64, llvm::ConstantInt::get(llvm::Type::getInt64Ty(ir_module->getContext()), 0));
+          auto res = ir_builder->CreateICmpNE(addr_int64, getLLVMConstantInt64(0));
 
           auto cmp_res = ir_builder->CreateSelect(res,
-                                                  llvm::ConstantInt::get(llvm::Type::getInt32Ty(ir_module->getContext()), 1),
-                                                  llvm::ConstantInt::get(llvm::Type::getInt32Ty(ir_module->getContext()), 0));
+                                                  getLLVMConstantInt32(1),
+                                                  getLLVMConstantInt32(0));
 
           return new tr::ValAndTy(cmp_res, type::IntTy::Instance());
       }
@@ -1198,7 +1226,7 @@ tr::ValAndTy *OpExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
                                                                 right_val},
                                                                "string_equal_result");
 
-          auto ne_res = ir_builder->CreateSub(llvm::ConstantInt::get(llvm::Type::getInt32Ty(ir_module->getContext()), 1),
+          auto ne_res = ir_builder->CreateSub(getLLVMConstantInt32(1),
                                               string_equal_res_int32,
                                               "string_not_equal_result");
 
@@ -1208,10 +1236,8 @@ tr::ValAndTy *OpExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
       auto res = ir_builder->CreateICmpNE(left_val_ty->val_, right_val_ty->val_);
 
       auto cmp_res = ir_builder->CreateSelect(res,
-                                              llvm::ConstantInt::get(llvm::Type::getInt32Ty(ir_module->getContext()),
-                                                                     1),
-                                              llvm::ConstantInt::get(llvm::Type::getInt32Ty(ir_module->getContext()),
-                                                                     0));
+                                              getLLVMConstantInt32(1),
+                                              getLLVMConstantInt32(0));
 
       return new tr::ValAndTy(cmp_res, type::IntTy::Instance());
   }
@@ -1220,10 +1246,8 @@ tr::ValAndTy *OpExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
       auto res = ir_builder->CreateICmpSGT(left_val_ty->val_, right_val_ty->val_);
 
       auto cmp_res = ir_builder->CreateSelect(res,
-                                              llvm::ConstantInt::get(llvm::Type::getInt32Ty(ir_module->getContext()),
-                                                                     1),
-                                              llvm::ConstantInt::get(llvm::Type::getInt32Ty(ir_module->getContext()),
-                                                                     0));
+                                              getLLVMConstantInt32(1),
+                                              getLLVMConstantInt32(0));
 
       return new tr::ValAndTy(cmp_res, type::IntTy::Instance());
   }
@@ -1232,10 +1256,8 @@ tr::ValAndTy *OpExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
       auto res = ir_builder->CreateICmpSGE(left_val_ty->val_, right_val_ty->val_);
 
       auto cmp_res = ir_builder->CreateSelect(res,
-                                              llvm::ConstantInt::get(llvm::Type::getInt32Ty(ir_module->getContext()),
-                                                                     1),
-                                              llvm::ConstantInt::get(llvm::Type::getInt32Ty(ir_module->getContext()),
-                                                                     0));
+                                              getLLVMConstantInt32(1),
+                                              getLLVMConstantInt32(0));
 
       return new tr::ValAndTy(cmp_res, type::IntTy::Instance());
   }
@@ -1244,10 +1266,8 @@ tr::ValAndTy *OpExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
       auto res = ir_builder->CreateICmpSLE(left_val_ty->val_, right_val_ty->val_);
 
       auto cmp_res = ir_builder->CreateSelect(res,
-                                              llvm::ConstantInt::get(llvm::Type::getInt32Ty(ir_module->getContext()),
-                                                                     1),
-                                              llvm::ConstantInt::get(llvm::Type::getInt32Ty(ir_module->getContext()),
-                                                                     0));
+                                              getLLVMConstantInt32(1),
+                                              getLLVMConstantInt32(0));
 
       return new tr::ValAndTy(cmp_res, type::IntTy::Instance());
   }
@@ -1256,10 +1276,8 @@ tr::ValAndTy *OpExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
       auto res = ir_builder->CreateICmpSLT(left_val_ty->val_, right_val_ty->val_);
 
       auto cmp_res = ir_builder->CreateSelect(res,
-                                              llvm::ConstantInt::get(llvm::Type::getInt32Ty(ir_module->getContext()),
-                                                                     1),
-                                              llvm::ConstantInt::get(llvm::Type::getInt32Ty(ir_module->getContext()),
-                                                                     0));
+                                              getLLVMConstantInt32(1),
+                                              getLLVMConstantInt32(0));
 
       return new tr::ValAndTy(cmp_res, type::IntTy::Instance());
   }
@@ -1293,8 +1311,7 @@ tr::ValAndTy *RecordExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
 
   // 得到的是一个 struct * 的值抽象 实际类型是 int64
   auto struct_p_llvm_int64 = ir_builder->CreateCall(alloc_record,
-                                                    {llvm::ConstantInt::get(llvm::Type::getInt32Ty(ir_module->getContext()),
-                                                                            total_size)});
+                                                    {getLLVMConstantInt32(total_size)});
 
   auto struct_p_llvm = ir_builder->CreateIntToPtr(struct_p_llvm_int64,
                                                   record_type->GetLLVMType());
@@ -1307,9 +1324,9 @@ tr::ValAndTy *RecordExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
 
       auto element_addr_p_llvm = ir_builder->CreateGEP(struct_p_llvm->getType()->getPointerElementType(),
                                                        struct_p_llvm,
-                                                       {llvm::ConstantInt::get(llvm::Type::getInt32Ty(ir_module->getContext()), 0),
-                                                        llvm::ConstantInt::get(llvm::Type::getInt32Ty(ir_module->getContext()), element_index)});
-      
+                                                       {getLLVMConstantInt32(0),
+                                                        getLLVMConstantInt32(element_index)});
+
       if (exp_val_ty->ty_->ActualTy() == type::NilTy::Instance()){
           auto null_constant = llvm::ConstantPointerNull::get(static_cast<llvm::PointerType*>((*field_it)->ty_->GetLLVMType()));
 
@@ -1410,8 +1427,7 @@ tr::ValAndTy *IfExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
   auto test_val_ty = this->test_->Translate(venv, tenv, level, errormsg);
 
   auto test_condition = ir_builder->CreateICmpNE(test_val_ty->val_,
-                                            llvm::ConstantInt::get(llvm::Type::getInt32Ty(ir_module->getContext()),
-                                                                   0));
+                                                 getLLVMConstantInt32(0));
 
   if (this->elsee_){
       ir_builder->CreateCondBr(test_condition,
@@ -1526,8 +1542,7 @@ tr::ValAndTy *WhileExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
   auto while_test_val_ty = this->test_->Translate(venv, tenv, level, errormsg);
 
   auto while_condition = ir_builder->CreateICmpNE(while_test_val_ty->val_,
-                                                  llvm::ConstantInt::get(llvm::Type::getInt32Ty(ir_module->getContext()),
-                                                                         0));
+                                                  getLLVMConstantInt32(0));
 
   ir_builder->CreateCondBr(while_condition, while_body_bb, while_next_bb);
 
@@ -1601,15 +1616,14 @@ tr::ValAndTy *ForExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
       auto global_frame_size = tr::generateGetGlobalFramesizeIR(loop_var_entry->access_->level_->frame_);
 
       auto loop_var_offset = ir_builder->CreateAdd(global_frame_size,
-                                                   llvm::ConstantInt::get(llvm::Type::getInt64Ty(ir_module->getContext()),
-                                                                          offset),
+                                                   getLLVMConstantInt64(offset),
                                                    this->var_->Name()+"_offset");
 
       auto loop_var_addr_llvm_int64 = ir_builder->CreateAdd(sp, loop_var_offset,
                                                             this->var_->Name() + "_addr_int64");
 
       loop_var_addr = ir_builder->CreateIntToPtr(loop_var_addr_llvm_int64,
-                                                 llvm::Type::getInt32PtrTy(ir_module->getContext()),
+                                                getLLVMTypeInt32Ptr(),
                                                  this->var_->Name() + "_pointer");
 
       ir_builder->CreateStore(lo_llvm, loop_var_addr);
@@ -1648,13 +1662,12 @@ tr::ValAndTy *ForExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
 
   ir_builder->SetInsertPoint(for_incre_bb);
 
-  auto loop_var_llvm = ir_builder->CreateLoad(llvm::Type::getInt32Ty(ir_module->getContext()),
+  auto loop_var_llvm = ir_builder->CreateLoad(getLLVMTypeInt32(),
                                         loop_var_addr,
                                         "loop_var");
 
   auto new_loop_var_llvm = ir_builder->CreateAdd(loop_var_llvm,
-                                 llvm::ConstantInt::get(llvm::Type::getInt32Ty(ir_module->getContext()),
-                                                        1),
+                                 getLLVMConstantInt32(1),
                                  "loop_var_incred");
 
   ir_builder->CreateStore(new_loop_var_llvm, loop_var_addr);
@@ -1736,7 +1749,7 @@ tr::ValAndTy *ArrayExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
 
   if (init_val_ty->val_->getType()->isIntegerTy(32)){
       init_value = ir_builder->CreateSExt(init_val_ty->val_,
-                                          llvm::Type::getInt64Ty(ir_module->getContext()));
+                                          getLLVMTypeInt64());
   } else {
       init_value = init_val_ty->val_;
   }
