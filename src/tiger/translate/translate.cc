@@ -109,7 +109,14 @@ int getActualFramesize(tr::Level *level) {
  * - Prob_12.6:
  *   去除使用 select IR 的部分
  *   布尔相关的运算向上传递 i1
+ * 
+ * - Prob_12.6:
+ *   - 需要调整类型检查 避免不同类型的比较 / 逻辑运算出现
  */
+inline auto getLLVMConstantInt1(int value) -> llvm::Constant *
+{
+    return llvm::ConstantInt::get(llvm::Type::getInt1Ty(ir_module->getContext()), value);
+}
 
 inline auto getLLVMConstantInt32(int value) -> llvm::Constant *
 {
@@ -141,6 +148,7 @@ inline auto getLLVMTypeInt64Ptr() -> llvm::PointerType *
     return llvm::Type::getInt64PtrTy(ir_module->getContext());
 }
 
+
 namespace tr {
 
 inline void generateRuntimeFunction(){
@@ -162,7 +170,11 @@ inline void generateRuntimeFunction(){
                                         "init_array",
                                         *ir_module);
 
-    auto string_equal_type_llvm = llvm::FunctionType::get(llvm::Type::getInt32Ty(ir_module->getContext()),
+    // auto string_equal_type_llvm = llvm::FunctionType::get(llvm::Type::getInt32Ty(ir_module->getContext()),
+    //                                                       {type::StringTy::Instance()->GetLLVMType(),
+    //                                                        type::StringTy::Instance()->GetLLVMType()},
+    //                                                       false);
+    auto string_equal_type_llvm = llvm::FunctionType::get(llvm::Type::getInt1Ty(ir_module->getContext()),
                                                           {type::StringTy::Instance()->GetLLVMType(),
                                                            type::StringTy::Instance()->GetLLVMType()},
                                                           false);
@@ -590,8 +602,13 @@ void FunctionDec::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
       // 开始翻译函数体
       auto ret_val_ty = absyn_fun_dec->body_->Translate(venv, tenv, fun_level, errormsg);
 
-      const auto & ret_val_llvm = ret_val_ty->val_;
+      auto ret_val_llvm = ret_val_ty->val_;
       const auto & ret_ty = ret_val_ty->ty_;
+
+      if (ret_ty->ActualTy() == type::IntTy::Instance() && ret_val_llvm->getType()->isIntegerTy(1)){
+          ret_val_llvm = ir_builder->CreateZExt(ret_val_llvm,
+                                                getLLVMTypeInt32());
+      }
 
       if (ret_ty->IsSameType(type::VoidTy::Instance())){
           // ret void
@@ -1032,116 +1049,186 @@ tr::ValAndTy *OpExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
   /* TODO: Put your lab5-part1 code here */
   // return nullptr;
   if (this->oper_ == Oper::OR_OP){
-      // auto right_cond_bb = llvm::BasicBlock::Create(ir_module->getContext(),
-      //                                              "right_exp_test",
-      //                                              ir_builder->GetInsertBlock()->getParent());
-      // auto or_next_bb = llvm::BasicBlock::Create(ir_module->getContext(),
-      //                                              "or_next",
-      //                                              ir_builder->GetInsertBlock()->getParent());
+      auto right_cond_bb = llvm::BasicBlock::Create(ir_module->getContext(),
+                                                   "right_exp_test",
+                                                   ir_builder->GetInsertBlock()->getParent());
+      auto or_next_bb = llvm::BasicBlock::Create(ir_module->getContext(),
+                                                   "or_next",
+                                                   ir_builder->GetInsertBlock()->getParent());
 
-      // auto left_cond_bb = ir_builder->GetInsertBlock();
+      auto left_cond_bb = ir_builder->GetInsertBlock();
 
-      // right_cond_bb->moveAfter(left_cond_bb);
-      // or_next_bb->moveAfter(right_cond_bb);
+      right_cond_bb->moveAfter(left_cond_bb);
+      or_next_bb->moveAfter(right_cond_bb);
 
-      // auto left_val_ty = this->left_->Translate(venv, tenv, level, errormsg);
+      auto left_val_ty = this->left_->Translate(venv, tenv, level, errormsg);
 
-      // auto left_condition = ir_builder->CreateICmpNE(left_val_ty->val_,
-      //                                                llvm::ConstantInt::get(llvm::Type::getInt32Ty(ir_module->getContext()), 0));
+      auto left_condition = left_val_ty->val_;
 
-      // ir_builder->CreateCondBr(left_condition,
-      //                          or_next_bb, 
-      //                          right_cond_bb);
+      auto left_bb = left_val_ty->last_bb_;
 
-      // ir_builder->SetInsertPoint(right_cond_bb);
+      // 保证 left_condition 是 i1
+      if (left_condition->getType()->isIntegerTy(32)){
+          left_condition = ir_builder->CreateICmpNE(left_condition,
+                                                    getLLVMConstantInt32(0));
+      } else if (left_condition->getType()->isIntegerTy(64)){
+          left_condition = ir_builder->CreateICmpNE(left_condition,
+                                                    getLLVMConstantInt64(0));
+      } else if (left_condition->getType()->isPointerTy()){
+          left_condition = ir_builder->CreatePtrToInt(left_condition,
+                                                      getLLVMTypeInt64());
+          left_condition = ir_builder->CreateICmpNE(left_condition,
+                                                  getLLVMConstantInt64(0));
+      }
 
-      // auto right_val_ty = this->right_->Translate(venv, tenv, level, errormsg);
+      ir_builder->CreateCondBr(left_condition,
+                               or_next_bb, 
+                               right_cond_bb);
 
-      // auto right_condition = ir_builder->CreateICmpNE(right_val_ty->val_,
-      //                                                 llvm::ConstantInt::get(llvm::Type::getInt32Ty(ir_module->getContext()), 0));
+      ir_builder->SetInsertPoint(right_cond_bb);
 
-      // ir_builder->CreateBr(or_next_bb);
+      auto right_val_ty = this->right_->Translate(venv, tenv, level, errormsg);
 
-      // ir_builder->SetInsertPoint(or_next_bb);
+      auto right_condition = right_val_ty->val_;
 
-      // auto phi = ir_builder->CreatePHI(left_condition->getType(), 2, "or_combine");
-      // phi->addIncoming(left_condition, left_cond_bb);
-      // phi->addIncoming(right_condition, right_cond_bb);
+      auto right_bb = right_val_ty->last_bb_;
+
+      // 保证 right_condition 是 i1
+      if (right_condition->getType()->isIntegerTy(32)) {
+          right_condition = ir_builder->CreateICmpNE(right_condition,
+                                                    getLLVMConstantInt32(0));
+      } else if (right_condition->getType()->isIntegerTy(64)) {
+          right_condition = ir_builder->CreateICmpNE(right_condition,
+                                                    getLLVMConstantInt64(0));
+      } else if (right_condition->getType()->isPointerTy()) {
+          right_condition = ir_builder->CreatePtrToInt(right_condition,
+                                                      getLLVMTypeInt64());
+          right_condition = ir_builder->CreateICmpNE(right_condition,
+                                                    getLLVMConstantInt64(0));
+      }
+
+      ir_builder->CreateBr(or_next_bb);
+
+      ir_builder->SetInsertPoint(or_next_bb);
+
+      auto phi = ir_builder->CreatePHI(left_condition->getType(), 2, "or_combine");
+      phi->addIncoming(left_condition, left_bb);
+      phi->addIncoming(right_condition, right_bb);
 
       // auto res = ir_builder->CreateSelect(phi,
       //                                     llvm::ConstantInt::get(llvm::Type::getInt32Ty(ir_module->getContext()), 1),
       //                                     llvm::ConstantInt::get(llvm::Type::getInt32Ty(ir_module->getContext()), 0));
 
-      // return new tr::ValAndTy(res, type::IntTy::Instance());
+      return new tr::ValAndTy(phi, type::IntTy::Instance());
 
-      auto left = this->left_->Translate(venv, tenv, level, errormsg);
-      auto right = this->right_->Translate(venv, tenv, level, errormsg);
+      // auto left = this->left_->Translate(venv, tenv, level, errormsg);
+      // auto right = this->right_->Translate(venv, tenv, level, errormsg);
 
-      auto llor = ir_builder->CreateOr(left->val_, right->val_);
+      // auto llor = ir_builder->CreateOr(left->val_, right->val_);
 
-      return new tr::ValAndTy(llor, type::IntTy::Instance());
+      // return new tr::ValAndTy(llor, type::IntTy::Instance());
   }
 
   if (this->oper_ == Oper::AND_OP) {
-  //     auto right_cond_bb = llvm::BasicBlock::Create(ir_module->getContext(),
-  //                                                   "right_exp_test",
-  //                                                   ir_builder->GetInsertBlock()->getParent());
-      
-  //     auto and_next_bb = llvm::BasicBlock::Create(ir_module->getContext(),
-  //                                                "and_next",
-  //                                                ir_builder->GetInsertBlock()->getParent());
+      auto right_cond_bb = llvm::BasicBlock::Create(ir_module->getContext(),
+                                                    "right_exp_test",
+                                                    ir_builder->GetInsertBlock()->getParent());
+      auto and_next_bb = llvm::BasicBlock::Create(ir_module->getContext(),
+                                                 "and_next",
+                                                 ir_builder->GetInsertBlock()->getParent());
 
-  //     auto left_cond_bb = ir_builder->GetInsertBlock();
+      auto left_cond_bb = ir_builder->GetInsertBlock();
 
-  //     right_cond_bb->moveAfter(left_cond_bb);
-  //     and_next_bb->moveAfter(right_cond_bb);
+      right_cond_bb->moveAfter(left_cond_bb);
+      and_next_bb->moveAfter(right_cond_bb);
 
-  //     auto left_val_ty = this->left_->Translate(venv, tenv, level, errormsg);
+      auto left_val_ty = this->left_->Translate(venv, tenv, level, errormsg);
 
-  //     auto left_condition = ir_builder->CreateICmpNE(left_val_ty->val_,
-  //                                                    llvm::ConstantInt::get(llvm::Type::getInt32Ty(ir_module->getContext()), 0));
+      auto left_condition = left_val_ty->val_;
 
-  //     ir_builder->CreateCondBr(left_condition,
-  //                              right_cond_bb,
-  //                              and_next_bb);
+      auto left_bb = left_val_ty->last_bb_;
 
-  //     ir_builder->SetInsertPoint(right_cond_bb);
+      // 保证 left_condition 是 i1
+      if (left_condition->getType()->isIntegerTy(32)) {
+          left_condition = ir_builder->CreateICmpNE(left_condition,
+                                                    getLLVMConstantInt32(0));
+      } else if (left_condition->getType()->isIntegerTy(64)) {
+          left_condition = ir_builder->CreateICmpNE(left_condition,
+                                                    getLLVMConstantInt64(0));
+      } else if (left_condition->getType()->isPointerTy()) {
+          left_condition = ir_builder->CreatePtrToInt(left_condition,
+                                                      getLLVMTypeInt64());
+          left_condition = ir_builder->CreateICmpNE(left_condition,
+                                                    getLLVMConstantInt64(0));
+      }
 
-  //     auto right_val_ty = this->right_->Translate(venv, tenv, level, errormsg);
+      ir_builder->CreateCondBr(left_condition,
+                               right_cond_bb,
+                               and_next_bb);
 
-  //     auto right_condition = ir_builder->CreateICmpNE(right_val_ty->val_,
-  //                                                     llvm::ConstantInt::get(llvm::Type::getInt32Ty(ir_module->getContext()), 0));
+      ir_builder->SetInsertPoint(right_cond_bb);
 
-  //     ir_builder->CreateBr(and_next_bb);
+      auto right_val_ty = this->right_->Translate(venv, tenv, level, errormsg);
 
-  //     ir_builder->SetInsertPoint(and_next_bb);
+      auto right_condition = right_val_ty->val_;
 
-  //     auto phi = ir_builder->CreatePHI(left_condition->getType(), 2, "and_combine");
-  //     phi->addIncoming(left_condition, left_cond_bb);
-  //     phi->addIncoming(right_condition, right_cond_bb);
+      auto right_bb = right_val_ty->last_bb_;
 
-  //     auto res = ir_builder->CreateSelect(phi,
-  //                                         llvm::ConstantInt::get(llvm::Type::getInt32Ty(ir_module->getContext()), 1),
-  //                                         llvm::ConstantInt::get(llvm::Type::getInt32Ty(ir_module->getContext()), 0));
+      // 保证 right_condition 是 i1
+      if (right_condition->getType()->isIntegerTy(32)) {
+          right_condition = ir_builder->CreateICmpNE(right_condition,
+                                                     getLLVMConstantInt32(0));
+      } else if (right_condition->getType()->isIntegerTy(64)) {
+          right_condition = ir_builder->CreateICmpNE(right_condition,
+                                                     getLLVMConstantInt64(0));
+      } else if (right_condition->getType()->isPointerTy()) {
+          right_condition = ir_builder->CreatePtrToInt(right_condition,
+                                                       getLLVMTypeInt64());
+          right_condition = ir_builder->CreateICmpNE(right_condition,
+                                                     getLLVMConstantInt64(0));
+      }
 
-  //     return new tr::ValAndTy(res, type::IntTy::Instance());
+      ir_builder->CreateBr(and_next_bb);
 
-  auto left = this->left_->Translate(venv, tenv, level, errormsg);
-  auto right = this->right_->Translate(venv, tenv, level, errormsg);
+      ir_builder->SetInsertPoint(and_next_bb);
 
-  auto lland = ir_builder->CreateAnd(left->val_, right->val_);
+      auto phi = ir_builder->CreatePHI(left_condition->getType(), 2, "and_combine");
+      phi->addIncoming(left_condition, left_bb);
+      phi->addIncoming(right_condition, right_bb);
 
-  return new tr::ValAndTy(lland, type::IntTy::Instance());
+      return new tr::ValAndTy(phi, type::IntTy::Instance());
+      // auto left = this->left_->Translate(venv, tenv, level, errormsg);
+      // auto right = this->right_->Translate(venv, tenv, level, errormsg);
+
+      // auto lland = ir_builder->CreateAnd(left->val_, right->val_);
+
+      // return new tr::ValAndTy(lland, type::IntTy::Instance());
   }
 
   auto left_val_ty = this->left_->Translate(venv, tenv, level, errormsg);
 
   auto right_val_ty = this->right_->Translate(venv, tenv, level, errormsg);
 
-  if (this->oper_ == Oper::PLUS_OP){
-    auto res = ir_builder->CreateAdd(left_val_ty->val_,right_val_ty->val_);
-    
-    return new tr::ValAndTy(res,type::IntTy::Instance());
+  auto left_ty = left_val_ty->ty_->ActualTy();
+  auto right_ty = right_val_ty->ty_->ActualTy();
+  auto left_val = left_val_ty->val_;
+  auto right_val = right_val_ty->val_;
+
+  // 基于所有 + - * / 比较 都必须在同类型之间运算
+  // + - * / 只能是 i32 与 i32 tiger中没有i1
+  // 比较只能是i32 与 i32 | record 与 record(NIL) | array 与 array | string 与 string 没有 i1
+  if (left_ty == type::IntTy::Instance() && left_val->getType()->isIntegerTy(1)) {
+      left_val = ir_builder->CreateZExt(left_val, getLLVMTypeInt32());
+  }
+
+  if (right_ty == type::IntTy::Instance() && right_val->getType()->isIntegerTy(1)) {
+      right_val = ir_builder->CreateZExt(right_val, getLLVMTypeInt32());
+  }
+
+  if (this->oper_ == Oper::PLUS_OP) {
+      auto res = ir_builder->CreateAdd(left_val_ty->val_, right_val_ty->val_);
+
+      return new tr::ValAndTy(res, type::IntTy::Instance());
   }
 
   if (this->oper_ == Oper::MINUS_OP) {
@@ -1156,30 +1243,27 @@ tr::ValAndTy *OpExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
       return new tr::ValAndTy(res, type::IntTy::Instance());
   }
 
-  if (this->oper_ == Oper::TIMES_OP){
-    auto res = ir_builder->CreateMul(left_val_ty->val_,right_val_ty->val_);
-    
-    return new tr::ValAndTy(res,type::IntTy::Instance());
+  if (this->oper_ == Oper::TIMES_OP) {
+      auto res = ir_builder->CreateMul(left_val_ty->val_, right_val_ty->val_);
+
+      return new tr::ValAndTy(res, type::IntTy::Instance());
   }
 
   if (this->oper_ == Oper::EQ_OP){
-    const auto & left_ty = left_val_ty->ty_->ActualTy();
-    const auto & right_ty = right_val_ty->ty_->ActualTy();
-    const auto & left_val = left_val_ty->val_;
-    const auto & right_val = right_val_ty->val_;
-
     // 在类型检查的时候保证这里不会出现 Nil = Nil 的情况
-    if (left_ty->ActualTy() == type::NilTy::Instance() && typeid(*right_ty) == typeid(type::RecordTy) ||
-        right_ty->ActualTy() == type::NilTy::Instance() && typeid(*left_ty) == typeid(type::RecordTy)){
-        auto addr_int64 = left_ty->ActualTy() == type::NilTy::Instance() ? ir_builder->CreatePtrToInt(right_val, getLLVMTypeInt64()) : ir_builder->CreatePtrToInt(left_val, getLLVMTypeInt64());
+    if (left_ty == type::NilTy::Instance() && typeid(*right_ty) == typeid(type::RecordTy) ||
+        right_ty == type::NilTy::Instance() && typeid(*left_ty) == typeid(type::RecordTy)){
+        auto addr_int64 = left_ty == type::NilTy::Instance() ? ir_builder->CreatePtrToInt(right_val, getLLVMTypeInt64()) : ir_builder->CreatePtrToInt(left_val, getLLVMTypeInt64());
 
         auto res = ir_builder->CreateICmpEQ(addr_int64, getLLVMConstantInt64(0));
 
-        auto cmp_res = ir_builder->CreateSelect(res,
-                                                getLLVMConstantInt32(1),
-                                                getLLVMConstantInt32(0));
+        // auto cmp_res = ir_builder->CreateSelect(res,
+        //                                         getLLVMConstantInt32(1),
+        //                                         getLLVMConstantInt32(0));
+        // return new tr::ValAndTy(cmp_res, type::IntTy::Instance());
 
-        return new tr::ValAndTy(cmp_res, type::IntTy::Instance());
+        // 返回 i1
+        return new tr::ValAndTy(res, type::IntTy::Instance());
     }
 
     if (left_ty->IsSameType(type::StringTy::Instance()) && right_ty->IsSameType(type::StringTy::Instance())){
@@ -1188,24 +1272,23 @@ tr::ValAndTy *OpExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
                                                               right_val},
                                                              "string_equal_result");
 
+        // 返回 i1
         return new tr::ValAndTy(string_equal_res_int32, type::IntTy::Instance());
     }
 
     auto res = ir_builder->CreateICmpEQ(left_val_ty->val_,right_val_ty->val_);
 
-    auto cmp_res = ir_builder->CreateSelect(res,
-                                            getLLVMConstantInt32(1),
-                                            getLLVMConstantInt32(0));
+    // auto cmp_res = ir_builder->CreateSelect(res,
+    //                                         getLLVMConstantInt32(1),
+    //                                         getLLVMConstantInt32(0));
 
-    return new tr::ValAndTy(cmp_res, type::IntTy::Instance());
+    // return new tr::ValAndTy(cmp_res, type::IntTy::Instance());
+
+    // 返回 i1
+    return new tr::ValAndTy(res, type::IntTy::Instance());
   }
 
   if (this->oper_ == Oper::NEQ_OP) {
-      const auto &left_ty = left_val_ty->ty_->ActualTy();
-      const auto &right_ty = right_val_ty->ty_->ActualTy();
-      const auto &left_val = left_val_ty->val_;
-      const auto &right_val = right_val_ty->val_;
-
       // 在类型检查的时候保证这里不会出现 Nil = Nil 的情况
       if (left_ty->ActualTy() == (type::NilTy::Instance()) && typeid(*right_ty) == typeid(type::RecordTy) ||
           right_ty->ActualTy() == (type::NilTy::Instance()) && typeid(*left_ty) == typeid(type::RecordTy)) {
@@ -1213,21 +1296,30 @@ tr::ValAndTy *OpExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
 
           auto res = ir_builder->CreateICmpNE(addr_int64, getLLVMConstantInt64(0));
 
-          auto cmp_res = ir_builder->CreateSelect(res,
-                                                  getLLVMConstantInt32(1),
-                                                  getLLVMConstantInt32(0));
+          // auto cmp_res = ir_builder->CreateSelect(res,
+          //                                         getLLVMConstantInt32(1),
+          //                                         getLLVMConstantInt32(0));
 
-          return new tr::ValAndTy(cmp_res, type::IntTy::Instance());
+          // return new tr::ValAndTy(cmp_res, type::IntTy::Instance());
+
+          // 返回 i1
+          return new tr::ValAndTy(res, type::IntTy::Instance());
       }
 
       if (left_ty->IsSameType(type::StringTy::Instance()) && right_ty->IsSameType(type::StringTy::Instance())) {
-          auto string_equal_res_int32 = ir_builder->CreateCall(string_equal,
+          auto string_equal_res_int1 = ir_builder->CreateCall(string_equal,
                                                                {left_val,
                                                                 right_val},
                                                                "string_equal_result");
 
-          auto ne_res = ir_builder->CreateSub(getLLVMConstantInt32(1),
-                                              string_equal_res_int32,
+          // auto ne_res = ir_builder->CreateSub(getLLVMConstantInt32(1),
+          //                                     string_equal_res_int32,
+          //                                     "string_not_equal_result");
+
+          // return new tr::ValAndTy(ne_res, type::IntTy::Instance());
+
+          auto ne_res = ir_builder->CreateSub(getLLVMConstantInt1(1),
+                                              string_equal_res_int1,
                                               "string_not_equal_result");
 
           return new tr::ValAndTy(ne_res, type::IntTy::Instance());
@@ -1235,51 +1327,57 @@ tr::ValAndTy *OpExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
 
       auto res = ir_builder->CreateICmpNE(left_val_ty->val_, right_val_ty->val_);
 
-      auto cmp_res = ir_builder->CreateSelect(res,
-                                              getLLVMConstantInt32(1),
-                                              getLLVMConstantInt32(0));
+      // auto cmp_res = ir_builder->CreateSelect(res,
+      //                                         getLLVMConstantInt32(1),
+      //                                         getLLVMConstantInt32(0));
 
-      return new tr::ValAndTy(cmp_res, type::IntTy::Instance());
+      // return new tr::ValAndTy(cmp_res, type::IntTy::Instance());
+
+      return new tr::ValAndTy(res, type::IntTy::Instance());
   }
 
   if (this->oper_ == Oper::GT_OP) {
       auto res = ir_builder->CreateICmpSGT(left_val_ty->val_, right_val_ty->val_);
 
-      auto cmp_res = ir_builder->CreateSelect(res,
-                                              getLLVMConstantInt32(1),
-                                              getLLVMConstantInt32(0));
+      // auto cmp_res = ir_builder->CreateSelect(res,
+      //                                         getLLVMConstantInt32(1),
+      //                                         getLLVMConstantInt32(0));
 
-      return new tr::ValAndTy(cmp_res, type::IntTy::Instance());
+      // return new tr::ValAndTy(cmp_res, type::IntTy::Instance());
+      return new tr::ValAndTy(res, type::IntTy::Instance());
   }
 
   if (this->oper_ == Oper::GE_OP) {
       auto res = ir_builder->CreateICmpSGE(left_val_ty->val_, right_val_ty->val_);
 
-      auto cmp_res = ir_builder->CreateSelect(res,
-                                              getLLVMConstantInt32(1),
-                                              getLLVMConstantInt32(0));
+      // auto cmp_res = ir_builder->CreateSelect(res,
+      //                                         getLLVMConstantInt32(1),
+      //                                         getLLVMConstantInt32(0));
 
-      return new tr::ValAndTy(cmp_res, type::IntTy::Instance());
+      // return new tr::ValAndTy(cmp_res, type::IntTy::Instance());
+      return new tr::ValAndTy(res, type::IntTy::Instance());
   }
 
   if (this->oper_ == Oper::LE_OP) {
       auto res = ir_builder->CreateICmpSLE(left_val_ty->val_, right_val_ty->val_);
 
-      auto cmp_res = ir_builder->CreateSelect(res,
-                                              getLLVMConstantInt32(1),
-                                              getLLVMConstantInt32(0));
+      // auto cmp_res = ir_builder->CreateSelect(res,
+      //                                         getLLVMConstantInt32(1),
+      //                                         getLLVMConstantInt32(0));
 
-      return new tr::ValAndTy(cmp_res, type::IntTy::Instance());
+      // return new tr::ValAndTy(cmp_res, type::IntTy::Instance());
+      return new tr::ValAndTy(res, type::IntTy::Instance());
   }
 
   if (this->oper_ == Oper::LT_OP) {
       auto res = ir_builder->CreateICmpSLT(left_val_ty->val_, right_val_ty->val_);
 
-      auto cmp_res = ir_builder->CreateSelect(res,
-                                              getLLVMConstantInt32(1),
-                                              getLLVMConstantInt32(0));
+      // auto cmp_res = ir_builder->CreateSelect(res,
+      //                                         getLLVMConstantInt32(1),
+      //                                         getLLVMConstantInt32(0));
 
-      return new tr::ValAndTy(cmp_res, type::IntTy::Instance());
+      // return new tr::ValAndTy(cmp_res, type::IntTy::Instance());
+      return new tr::ValAndTy(res, type::IntTy::Instance());
   }
 
   return nullptr;
@@ -1424,10 +1522,26 @@ tr::ValAndTy *IfExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
    */
   ir_builder->SetInsertPoint(if_test_bb);
 
-  auto test_val_ty = this->test_->Translate(venv, tenv, level, errormsg);
+  // auto test_val_ty = this->test_->Translate(venv, tenv, level, errormsg);
 
-  auto test_condition = ir_builder->CreateICmpNE(test_val_ty->val_,
-                                                 getLLVMConstantInt32(0));
+  // auto test_condition = ir_builder->CreateICmpNE(test_val_ty->val_,
+  //                                                getLLVMConstantInt32(0));
+
+  auto test_condition = this->test_->Translate(venv,tenv,level,errormsg)->val_;
+
+  // 保证 test_condition 是 i1
+  if (test_condition->getType()->isIntegerTy(32)){
+      test_condition = ir_builder->CreateICmpNE(test_condition,
+                                                getLLVMConstantInt32(0));
+  } else if (test_condition->getType()->isIntegerTy(64)){
+      test_condition = ir_builder->CreateICmpNE(test_condition,
+                                                getLLVMConstantInt64(0));
+  } else if (test_condition->getType()->isPointerTy()){
+      auto condition_int64 = ir_builder->CreatePtrToInt(test_condition, getLLVMTypeInt64());
+
+      test_condition = ir_builder->CreateICmpNE(test_condition,
+                                                getLLVMConstantInt64(0));
+  }
 
   if (this->elsee_){
       ir_builder->CreateCondBr(test_condition,
@@ -1541,8 +1655,20 @@ tr::ValAndTy *WhileExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
 
   auto while_test_val_ty = this->test_->Translate(venv, tenv, level, errormsg);
 
-  auto while_condition = ir_builder->CreateICmpNE(while_test_val_ty->val_,
-                                                  getLLVMConstantInt32(0));
+  auto while_condition = while_test_val_ty->val_;
+
+  if (while_condition->getType()->isIntegerTy(32)) {
+      while_condition = ir_builder->CreateICmpNE(while_condition,
+                                                getLLVMConstantInt32(0));
+  } else if (while_condition->getType()->isIntegerTy(64)) {
+      while_condition = ir_builder->CreateICmpNE(while_condition,
+                                                getLLVMConstantInt64(0));
+  } else if (while_condition->getType()->isPointerTy()) {
+      auto condition_int64 = ir_builder->CreatePtrToInt(while_condition, getLLVMTypeInt64());
+
+      while_condition = ir_builder->CreateICmpNE(while_condition,
+                                                getLLVMConstantInt64(0));
+  }
 
   ir_builder->CreateCondBr(while_condition, while_body_bb, while_next_bb);
 
