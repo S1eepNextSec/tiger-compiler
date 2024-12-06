@@ -172,7 +172,12 @@ type::Ty *OpExp::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
   if (!left_type->IsSameType(right_type)) {
       errormsg->Error(this->pos_, "same type required");
   }
-  
+
+  // NIL op NIL ?
+  if (left_type->ActualTy() == type::NilTy::Instance() && right_type->ActualTy() == type::NilTy::Instance()) {
+      errormsg->Error(this->pos_, "nil without record type");
+  }
+
   return type::IntTy::Instance();
 }
 
@@ -285,6 +290,10 @@ type::Ty *IfExp::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
       // type should match
       if (!then_exp_type->IsSameType(else_exp_type)) {
           errormsg->Error(this->pos_, "then exp and else exp type mismatch");
+      }
+
+      if (then_exp_type->ActualTy() == type::NilTy::Instance() && else_exp_type->ActualTy() == type::NilTy::Instance()){
+          errormsg->Error(this->pos_, "nil without record type");
       }
 
       return then_exp_type;
@@ -498,6 +507,18 @@ void FunctionDec::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
     if (result_type->ActualTy() != type::VoidTy::Instance() && fun_entry->result_->ActualTy() == type::VoidTy::Instance()){
         errormsg->Error(this->pos_, "procedure returns value");
     }
+
+    /* ADD LOGIC */
+    if (result_type->ActualTy() == type::VoidTy::Instance() && fun_entry->result_->ActualTy() != type::VoidTy::Instance()){
+        errormsg->Error(this->pos_, "function returns void");
+    }
+
+    if (result_type->ActualTy() != type::VoidTy::Instance() && fun_entry->result_->ActualTy() != type::VoidTy::Instance() &&
+        ! result_type->IsSameType(fun_entry->result_)){
+        errormsg->Error(this->pos_, "type mismatch");
+    }
+
+    /* ADD LOGIC */
 
     venv->EndScope();
   }

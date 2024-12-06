@@ -94,25 +94,24 @@ int getActualFramesize(tr::Level *level) {
  * -  Prob_12.2:
  *    FunctionDec中进入具体函数进行分析时
  *    没有在 venv 中添加形参的VEntry
- *    需要重写 FunctionDec 中的逻辑
- * -  已解决
+ *    需要重写 FunctionDec 中的逻辑 <------ 已解决
  */
 
 /**
  * - Prob_12.3:
- *   - 需要调整类型检查 保证出现Nil的上下文中必定可以推断出Nil所属的Record 类型
- *   - 需要调整类型检查 保证RecordExp中Field赋值为Nil 其Field类型必定得为Record
+ *   - 需要调整类型检查 保证出现Nil的上下文中必定可以推断出Nil所属的Record 类型 <----- 已解决
+ *   - 需要调整类型检查 保证RecordExp中Field赋值为Nil 其Field类型必定得为Record <----- 已解决
  * 
  */
 
 /**
  * - Prob_12.6:
- *   去除使用 select IR 的部分
- *   布尔相关的运算向上传递 i1
+ *   去除使用 select IR 的部分  <----- 已解决
+ *   布尔相关的运算向上传递 i1  <----- 已解决
  * 
  * - Prob_12.6:
- *   - 需要调整类型检查 避免不同类型的比较 / 逻辑运算出现
- *   - 设计exp的地方需要检查如果是 i32 是不是需要将 可能返回的 i1 转换为 i32
+ *   - 需要调整类型检查 避免不同类型的比较 / 逻辑运算出现 <-----  已解决
+ *   - 设计exp的地方需要检查如果是 i32 是不是需要将 可能返回的 i1 转换为 i32  <----- 已解决
  */
 inline auto getLLVMConstantInt1(int value) -> llvm::Constant *
 {
