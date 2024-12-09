@@ -1912,12 +1912,16 @@ tr::ValAndTy *ArrayExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
   }
 
   // FIXME: 如何保证得到的init_val_ty->val_ 必定要么是 int32 要么是 int64 ?
+  // FIXME: 如果 init_val 实际上是 string / record 类型 ?
   if (init_val_ty->val_->getType()->isIntegerTy(1)){
       init_value = ir_builder->CreateZExt(init_val_ty->val_,
                                           getLLVMTypeInt64());
   } else if (init_val_ty->val_->getType()->isIntegerTy(32)){
       init_value = ir_builder->CreateSExt(init_val_ty->val_,
                                           getLLVMTypeInt64());
+  } else if (init_val_ty->val_->getType()->isPointerTy()){
+      init_value = ir_builder->CreatePtrToInt(init_val_ty->val_,
+                                              getLLVMTypeInt64());
   } else {
       init_value = init_val_ty->val_;
   }
