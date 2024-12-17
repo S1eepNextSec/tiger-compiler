@@ -1626,7 +1626,7 @@ tr::ValAndTy *IfExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
       ir_builder->SetInsertPoint(if_else_bb);
 
       else_body_ret_val_llvm = this->elsee_->Translate(venv, tenv, level, errormsg);
-
+    
       ir_builder->CreateBr(if_next_bb);
   }
 
@@ -1652,8 +1652,13 @@ tr::ValAndTy *IfExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
 
     if (then_body_ret_val_llvm->ty_->ActualTy() == type::IntTy::Instance() && 
         then_body_ret_val_llvm->val_->getType()->isIntegerTy(1)){
+        /* 回到对应的 block 做一次类型转换 */
+        ir_builder->SetInsertPoint(&(*then_body_ret_val_llvm->last_bb_->rbegin()));
+
         then_body_ret_val = ir_builder->CreateZExt(then_body_ret_val,
                                                    getLLVMTypeInt32());
+
+        ir_builder->SetInsertPoint(if_next_bb);
     }
 
     auto else_body_ret_val = else_body_ret_val_llvm->ty_->ActualTy() ==type::NilTy::Instance() ? 
@@ -1662,8 +1667,12 @@ tr::ValAndTy *IfExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
 
     if (else_body_ret_val_llvm->ty_->ActualTy() == type::IntTy::Instance() &&
         else_body_ret_val_llvm->val_->getType()->isIntegerTy(1)) {
+        ir_builder->SetInsertPoint(&(*else_body_ret_val_llvm->last_bb_->rbegin()));
+
         else_body_ret_val = ir_builder->CreateZExt(else_body_ret_val,
                                                    getLLVMTypeInt32());
+
+        ir_builder->SetInsertPoint(if_next_bb);
     }
 
     auto phi = ir_builder->CreatePHI(ret_type->GetLLVMType(),

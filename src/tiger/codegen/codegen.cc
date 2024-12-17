@@ -516,27 +516,131 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
 
           instr_list->Append(new assem::MoveInstr("movq `s0,`d0",
                                                   new temp::TempList({temp}),
-                                                  new temp::TempList({caller_reg}),
-                                                  nullptr));
+                                                  new temp::TempList({caller_reg})));
           temp_caller_reg_map.insert({temp, caller_reg});
       }
 
-      /* 传入参数 */
-      auto arg_iter = call_instr->arg_begin();
+      auto arg_operand_count = call_instr->getNumOperands() - 1;
 
-      /* 跳过 栈指针*/
-      arg_iter++;
+      if (call_instr->getReturnedArgOperand()) {
+          arg_operand_count--;
+      }
 
-      /* 保存 static link */
-      auto static_link_llvm = static_cast<llvm::Value *>(arg_iter);
-      auto static_link_reg = this->temp_map_->at(static_link_llvm);
+      int arg_operand_index = 0;
+      auto arg_regs = reg_manager->ArgRegs();
+      auto arg_reg_iter = arg_regs->GetList().begin();
+
+      if (call_instr->getCalledFunction()->isDeclaration()) {
+          /* 传参 */
+          while (arg_operand_index < arg_operand_count) {
+              auto arg_operand_llvm = call_instr->getOperand(arg_operand_index);
+              if (arg_reg_iter != arg_regs->GetList().end()) {
+                  if (auto *constant = llvm::dyn_cast<llvm::ConstantInt>(arg_operand_llvm)) {
+                      auto constant_value = constant->getSExtValue();
+                      instr_list->Append(new assem::OperInstr("movq $" + std::to_string(constant_value) + ",`d0",
+                                                              new temp::TempList({*arg_reg_iter}),
+                                                              nullptr,
+                                                              nullptr));
+                  } else {
+                      auto arg_operand_reg = this->temp_map_->at(arg_operand_llvm);
+                      instr_list->Append(new assem::MoveInstr("movq `s0,`d0",
+                                                              new temp::TempList({*arg_reg_iter}),
+                                                              new temp::TempList({arg_operand_reg})));
+                  }
+                  arg_reg_iter++;
+              } else {
+                  if (auto *constant = llvm::dyn_cast<llvm::ConstantInt>(arg_operand_llvm)) {
+                      auto constant_value = constant->getSExtValue();
+                      instr_list->Append(new assem::OperInstr("movq $" + std::to_string(constant_value) + "," + std::to_string(8 + 8 * arg_operand_index) + "(`s0)",
+                                                              nullptr,
+                                                              new temp::TempList(reg_manager->GetRegister(frame::X64RegManager::Reg::RSP)),
+                                                              nullptr));
+                  } else {
+                      auto param_reg = this->temp_map_->at(arg_operand_llvm);
+                      instr_list->Append(new assem::OperInstr("movq `s0," + std::to_string(8 + 8 * arg_operand_index) + "(`s1)",
+                                                              nullptr,
+                                                              new temp::TempList({param_reg, reg_manager->GetRegister(frame::X64RegManager::Reg::RSP)}),
+                                                              nullptr));
+                  }
+              }
+              arg_operand_index++;
+          }
+      } else {
+          /* 保存 static link */
+          auto static_link_llvm = call_instr->getArgOperand(1);
+          auto static_link_reg = this->temp_map_->at(static_link_llvm);
+
+          instr_list->Append(new assem::OperInstr("movq `s0,8(`s1)",
+                                                  nullptr,
+                                                  new temp::TempList({static_link_reg, reg_manager->GetRegister(frame::X64RegManager::Reg::RSP)}),
+                                                  nullptr));
+
+          /* 传参 */
+          arg_operand_index = 2;
+          while (arg_operand_index < arg_operand_count) {
+              auto arg_operand_llvm = call_instr->getOperand(arg_operand_index);
+              if (arg_reg_iter != arg_regs->GetList().end()) {
+                  if (auto *constant = llvm::dyn_cast<llvm::ConstantInt>(arg_operand_llvm)) {
+                      auto constant_value = constant->getSExtValue();
+                      instr_list->Append(new assem::OperInstr("movq $" + std::to_string(constant_value) + ",`d0",
+                                                              new temp::TempList({*arg_reg_iter}),
+                                                              nullptr,
+                                                              nullptr));
+                  } else {
+                      auto arg_operand_reg = this->temp_map_->at(arg_operand_llvm);
+                      instr_list->Append(new assem::MoveInstr("movq `s0,`d0",
+                                                              new temp::TempList({*arg_reg_iter}),
+                                                              new temp::TempList({arg_operand_reg})));
+                  }
+                  arg_reg_iter++;
+              } else {
+                  if (auto *constant = llvm::dyn_cast<llvm::ConstantInt>(arg_operand_llvm)) {
+                      auto constant_value = constant->getSExtValue();
+                      instr_list->Append(new assem::OperInstr("movq $" + std::to_string(constant_value) + "," + std::to_string(8 * arg_operand_index) + "(`s0)",
+                                                              nullptr,
+                                                              new temp::TempList(reg_manager->GetRegister(frame::X64RegManager::Reg::RSP)),
+                                                              nullptr));
+                  } else {
+                      auto param_reg = this->temp_map_->at(arg_operand_llvm);
+                      instr_list->Append(new assem::OperInstr("movq `s0," + std::to_string(8 * arg_operand_index) + "(`s1)",
+                                                              nullptr,
+                                                              new temp::TempList({param_reg, reg_manager->GetRegister(frame::X64RegManager::Reg::RSP)}),
+                                                              nullptr));
+                  }
+              }
+              arg_operand_index++;
+          }
+      }
+
+      /* 调用指令 */
+      /* FIXME: rsp 需要 +8 ? */
+      {
+          instr_list->Append(new assem::OperInstr("addq $8,`d0",
+                                                  new temp::TempList({reg_manager->GetRegister(frame::X64RegManager::Reg::RSP)}),
+                                                  nullptr,
+                                                  nullptr));
+          auto callee_function_name = call_instr->getCalledFunction()->getName().str();
+          instr_list->Append(new assem::OperInstr("callq " + callee_function_name,
+                                                  nullptr,
+                                                  nullptr,
+                                                  nullptr));
+          auto dst_reg = this->temp_map_->at(static_cast<llvm::Value *>(&inst));
+          instr_list->Append(new assem::MoveInstr("movq `s0,`d0",
+                                                  new temp::TempList({dst_reg}),
+                                                  new temp::TempList({reg_manager->GetRegister(frame::X64RegManager::Reg::RAX)})));
+
+          instr_list->Append(new assem::OperInstr("subq $8,`d0",
+                                                  new temp::TempList({reg_manager->GetRegister(frame::X64RegManager::Reg::RSP)}),
+                                                  nullptr,
+                                                  nullptr));
+      }
 
       /* 恢复 caller-save regs */
-      fopr (const auto & [temp,caller_reg] : caller_save_regs){
+      for (const auto &[temp, caller_reg] : temp_caller_reg_map)
+      {
           instr_list->Append(new assem::MoveInstr("movq `s0,`d0",
                                                   new temp::TempList({caller_reg}),
-                                                  new temp::TempList({temp}),
-                                                  nullptr));
+                                                  new temp::TempList({temp})));
       }
   }
 
