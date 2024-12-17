@@ -48,7 +48,7 @@ public:
   std::string assem_; //  汇编指令文本
   temp::Label *label_;  //  Label的内容
   LabelInstr(std::string assem)
-      : assem_(std::move(assem)), label_(temp::LabelFactory::NamedLabel(assem)) {}
+      : assem_(assem), label_(temp::LabelFactory::NamedLabel(assem)) {}
 
   void Print(FILE *out, temp::Map *m) const override;
   [[nodiscard]] temp::TempList *Def() const override;
