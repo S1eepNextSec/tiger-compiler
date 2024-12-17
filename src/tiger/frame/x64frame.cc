@@ -30,6 +30,9 @@ X64RegManager::X64RegManager() : RegManager() {
   }
 }
 
+/**
+ * @return 返回通用寄存器(rsp 除外)
+ */
 temp::TempList *X64RegManager::Registers() {
   const std::array reg_array{
       RAX, RBX, RCX, RDX, RSI, RDI, RBP, R8, R9, R10, R11, R12, R13, R14, R15,
@@ -40,6 +43,9 @@ temp::TempList *X64RegManager::Registers() {
   return temp_list;
 }
 
+/**
+ * @return 返回存储函数调用传入参数的寄存器
+ */
 temp::TempList *X64RegManager::ArgRegs() {
   const std::array reg_array{RDI, RSI, RDX, RCX, R8, R9};
   auto *temp_list = new temp::TempList();
@@ -49,6 +55,9 @@ temp::TempList *X64RegManager::ArgRegs() {
   return temp_list;
 }
 
+/**
+ * @return 返回 Caller save 寄存器
+ */
 temp::TempList *X64RegManager::CallerSaves() {
   std::array reg_array{RAX, RDI, RSI, RDX, RCX, R8, R9, R10, R11};
   auto *temp_list = new temp::TempList();
@@ -58,6 +67,9 @@ temp::TempList *X64RegManager::CallerSaves() {
   return temp_list;
 }
 
+/**
+ * @return 返回 Callee save 寄存器
+ */
 temp::TempList *X64RegManager::CalleeSaves() {
   std::array reg_array{RBP, RBX, R12, R13, R14, R15};
   auto *temp_list = new temp::TempList();
@@ -76,6 +88,9 @@ temp::TempList *X64RegManager::ReturnSink() {
 
 int X64RegManager::WordSize() { return 8; }
 
+/**
+ * @return 获取栈指针寄存器
+ */
 temp::Temp *X64RegManager::FramePointer() { return regs_[FP]; }
 
 /**
@@ -94,12 +109,9 @@ public:
   int get_offset() override { return offset; }
 };
 
-<<<<<<< HEAD
-=======
 // inherited from Frame Class
 // Frame 定义独立于各个平台具体的栈管理形式
 // 继承 Frame 来实现具体平台中的栈帧管理
->>>>>>> lab5-part1
 class X64Frame : public Frame {
 public:
   X64Frame(temp::Label *name, std::list<frame::Access *> *formals)
@@ -177,7 +189,6 @@ frame::Frame *NewFrame(temp::Label *name, std::list<bool> formals) {
   return x64_frame;
 }
 
-<<<<<<< HEAD
 /**
  * Moving incoming formal parameters, the saving and restoring of callee-save
  * Registers
@@ -220,6 +231,4 @@ assem::Proc *ProcEntryExit3(std::string_view function_name,
 
 void Frags::PushBack(Frag *frag) { frags_.emplace_back(frag); }
 
-=======
->>>>>>> lab5-part1
 } // namespace frame

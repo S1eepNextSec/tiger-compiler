@@ -52,16 +52,16 @@ int getActualFramesize(tr::Level *level) {
  *    因此需要有一个结构来追溯所有变量的LEVEL & ACCESS
  *    ProgTr内部有 Tenv & Venv结构 每个Tenv中的entry会记录
  *    Ty & Ty对应在llvm里面的llvm::Type
- * 
- * -  每个Type::Ty的子类都实现了GetLLVMType的函数 
+ *
+ * -  每个Type::Ty的子类都实现了GetLLVMType的函数
  *    以此来获取AST中变量类型Type::Ty对应的llvm::Type
- * 
+ *
  * -  Venv中记录的 VEntry 中附带了tr::Access字段
  *    tr::Access包含 Level信息 & frame::Access信息
  *    -  Level可以帮助获取到变量所在函数结构中的层级
  *    -  frame::Access可以帮助获取其在对应栈帧中的位置
  *    因此在构造Venv的时候需要传入对应的 tr::Access结构
- * 
+ *
  * -  Venv中记录的 FunEntry 中附带了 Level* 字段
  *    Level结构中包含指向parent Level指针以及对应的frame指针
  *      - 通过 frame 可以获取到函数对应的栈帧结构
@@ -70,24 +70,64 @@ int getActualFramesize(tr::Level *level) {
  *      - 先构造 Frame
  *      - 根据 Frame 构造出 Level
  *      - 将 Level & llvm function 传入 FunEntry 构造函数
- * 
- * -  IR中 每次进入一个函数 会根据传入的栈顶指针 
+ *
+ * -  IR中 每次进入一个函数 会根据传入的栈顶指针
  *    减去当前函数对应的栈帧大小 来获取函数栈帧顶部位置
  *    因此当所有函数的栈帧分析完毕时 需要添加栈帧的全局变量
- * 
+ *
  * -  每个函数中的本地变量进行 Var Dec 的时候
  *    需要知道是在哪个函数的 scope 下进行声明的
  *    所以需要知道当前函数对应的 Frame 因此将 Level 层层向下传递
  *    根据 level 可以获取到 current function scope
- * 
+ *
  * -  Translate过程中 根据当前层的Level获取到函数的stack pointer
  *    是合法的 因为此时必定在该函数对应的 llvm ir function内
  *    对应的 stack pointer 在该llvm ir function内是有效的值
  *    但是跨越 Level 访问别的函数的 stack pointer 不合法
  *    因为 llvm ir function 中不能访问别的函数定义中的值
  *    别的函数的 stack pointer 是在他自己的域内计算出来的 不能在别处使用
- *    
- * 
+ *
+ * -  Function Frame
+ *    |----------------------|
+ *    |          .           |
+ *    |          .           |
+ *    |          .           |
+ *    |          .           |
+ *    |          .           |
+ *    |          .           |
+ *    |----------------------|------
+ *    |       formal 3       |      |
+ *    |----------------------|      |
+ *    |       formal 2       |      |
+ *    |----------------------|      |
+ *    |       formal 1       |       > space that current frame can access
+ *    |----------------------|      |
+ *    |     static link      |      |
+ *    |----------------------|      |
+ *    |    return address    |      |
+ *    |----------------------|<---------- current function frame top
+ *    |      local var 1     |      |
+ *    |----------------------|      |
+ *    |      local var 2     |      |
+ *    |----------------------|       > space for local variables
+ *    |          .           |      |
+ *    |          .           |      |
+ *    |      local var n     |      |
+ *    |----------------------|------
+ *    |       formal m       |      |
+ *    |----------------------|      |
+ *    |          .           |      |
+ *    |          .           |      |
+ *    |          .           |      |
+ *    |----------------------|      |
+ *    |       formal 2       |       > outgo space for its callee function frame
+ *    |----------------------|      |
+ *    |       formal 1       |      |
+ *    |----------------------|      |
+ *    |     static link      |      |
+ *    |----------------------|      |
+ *    |    return address    |      |
+ *    |----------------------|<---- current function frame end
  */
 
 /**
@@ -262,7 +302,8 @@ class ValAndTy {
 public:
   type::Ty *ty_;
   llvm::Value *val_;
-
+  llvm::BasicBlock *last_bb_;
+  
   ValAndTy(llvm::Value *val, type::Ty *ty) : val_(val), ty_(ty), last_bb_(ir_builder->GetInsertBlock()) {}
   ValAndTy(llvm::Value *val, type::Ty *ty, llvm::BasicBlock* last_bb) : val_(val), ty_(ty), last_bb_(last_bb){}
 };

@@ -67,7 +67,7 @@ public:
   temp::Map *temp_map_;
 
 protected:
-  std::vector<temp::Temp *> regs_;
+  std::vector<temp::Temp *> regs_;  //  regs_ 存储用来映射实际寄存器的临时寄存器对象
 };
 
 // 1 Access -> 1 Function param which is used when calling this function
@@ -106,9 +106,6 @@ public:
    * 为Callee分配传入形参的栈空间
    */
   virtual void AllocOutgoSpace(int size) = 0;
-<<<<<<< HEAD
-  int calculateActualFramesize() { return (-offset_ + outgo_size_) + 8; }
-=======
   
   /**
    * @return 计算出的栈中实际栈帧大小
@@ -126,7 +123,6 @@ public:
                                           //  outgo_size_:为callee function分配的参数空间
                                           //  8: 返回地址
   }
->>>>>>> lab5-part1
 };
 
 /**
