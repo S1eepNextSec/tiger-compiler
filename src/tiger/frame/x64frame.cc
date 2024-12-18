@@ -199,6 +199,21 @@ frame::Frame *NewFrame(temp::Label *name, std::list<bool> formals) {
 assem::InstrList *ProcEntryExit1(std::string_view function_name,
                                  assem::InstrList *body) {
   // TODO: your lab5 code here
+  auto callee_save_regs = reg_manager->CalleeSaves();
+
+  body->Append(new assem::LabelInstr(std::string(function_name) + "_ret"));
+
+  for (const auto & reg : callee_save_regs->GetList()){
+      auto temp = temp::TempFactory::NewTemp();
+
+      body->PushFront(new assem::MoveInstr("movq `s0,`d0",
+                                           new temp::TempList({temp}),
+                                           new temp::TempList({reg})));
+      body->Append(new assem::MoveInstr("movq `s0,`d0",
+                                        new temp::TempList({reg}),
+                                        new temp::TempList({temp})));
+  }
+
   return body;
 }
 
@@ -224,6 +239,25 @@ assem::Proc *ProcEntryExit3(std::string_view function_name,
                             assem::InstrList *body) {
   std::string prologue = "";
   std::string epilogue = "";
+
+  
+  body->PushFront(new assem::OperInstr("subq $" + std::string(function_name) + "_framesize_local,`d0",
+                                       new temp::TempList({reg_manager->GetRegister(frame::X64RegManager::Reg::RSP)}),
+                                       nullptr,
+                                       nullptr));
+  body->PushFront(new assem::OperInstr(std::string(function_name) + ":",
+                                       nullptr,
+                                       nullptr,
+                                       nullptr));
+
+  body->Append(new assem::OperInstr("addq $" + std::string(function_name) + "_framesize_local,`d0",
+                                    new temp::TempList(reg_manager->GetRegister(frame::X64RegManager::Reg::RSP)),
+                                    nullptr,
+                                    nullptr));
+  body->Append(new assem::OperInstr("retq",
+                                    nullptr,
+                                    nullptr,
+                                    nullptr));
 
   // TODO: your lab5 code here
   return new assem::Proc(prologue, body, epilogue);

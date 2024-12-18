@@ -590,6 +590,9 @@ void FunctionDec::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
 
       fun_level->set_sp(current_sp_llvm);
 
+      /* 保证每个函数中 %0 只被使用一次 这样子在codeGen中可以直接跳过 */
+      last_sp_llvm = ir_builder->CreateAdd(current_sp_llvm, frame_size);
+
       /* 复制 static link */
       arg_llvm++;
 

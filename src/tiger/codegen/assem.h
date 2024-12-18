@@ -81,8 +81,9 @@ public:
   [[nodiscard]] const std::list<Instr *> &GetList() const {
     return instr_list_;
   }
+  void PushFront(assem::Instr *instr) { instr_list_.push_front(instr); }
 
-private:
+  private:
   std::list<Instr *> instr_list_;
 };
 

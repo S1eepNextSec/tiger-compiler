@@ -39,8 +39,6 @@ void CodeGen::Codegen() {
   // first arguement is rsp, we need to skip it
   ++arg_iter;
   
-  /* 将传入参数全部都移动到新的临时寄存器中 */
-  /* 以此来保证用来传参的寄存器可以参与到寄存器分配 */
   for (; arg_iter != traces_->GetBody()->arg_end() &&
          tmp_iter != regs->GetList().end();
        ++arg_iter, ++tmp_iter) {
@@ -119,25 +117,23 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
   // TODO: your lab5 code here
   // throw std::runtime_error(std::string("Unknown instruction: ") +
   //                          inst.getOpcodeName());
-  if (auto *load_instr = llvm::dyn_cast<llvm::LoadInst>(&inst)){
+  static auto last_bb_index_reg = temp::TempFactory::NewTemp();
+  static int phi_count = 0;
+
+  if (auto *load_instr = llvm::dyn_cast<llvm::LoadInst>(&inst)) {
       /* <reg> = load i64, i64* <label>  */
       /* <reg> = load i64, i64* <reg> */
       auto pointer_operand_llvm = load_instr->getPointerOperand();
 
       if (auto global_variable = llvm::dyn_cast<llvm::GlobalValue>(pointer_operand_llvm)){
           auto global_variable_name = global_variable->getName().str();
-          size_t pos = 0;
-          if ((pos = global_variable_name.find("_framesize_global", pos))!=std::string::npos){
-              global_variable_name.replace(pos, std::string("_framesize_global").length(), "_framesize_local");
-          }
 
           auto dst_reg = this->temp_map_->at(static_cast<llvm::Value *>(&inst));
-
-          auto load_assem = new assem::OperInstr("movq (" + global_variable_name + "),`d0",
-                                                 new temp::TempList({dst_reg}),
-                                                 nullptr,
-                                                 nullptr);
-          instr_list->Append(load_assem);
+        
+          instr_list->Append(new assem::OperInstr("movq " + global_variable_name + "(%rip),`d0",
+                                                  new temp::TempList({dst_reg}),
+                                                  nullptr,
+                                                  nullptr));
       } else {
           auto pointer_reg = this->temp_map_->at(pointer_operand_llvm);
 
@@ -265,7 +261,7 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
               instr_list->Append(new assem::MoveInstr("movq `s0,`d0",
                                                       new temp::TempList({dst_reg}),
                                                       new temp::TempList({l_operand_reg})));
-              instr_list->Append(new assem::OperInstr("subq $" + std::to_string(l_constant_value)+ ",`d0",
+              instr_list->Append(new assem::OperInstr("subq $" + std::to_string(r_constant_value)+ ",`d0",
                                                       new temp::TempList({dst_reg}),
                                                       nullptr,
                                                       nullptr));
@@ -476,7 +472,7 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
                                                   new temp::TempList({pointer_reg, index_reg}),
                                                   nullptr));
       }
-    } else if (index_count == 4){
+    } else if (index_count == 2){
       /* array */
       auto index_llvm = gep_instr->getOperand(1);
 
@@ -502,8 +498,77 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
   }
 
   if (auto * zext_instr = llvm::dyn_cast<llvm::ZExtInst>(&inst)){
-    // ?
+      auto src_operand_llvm = zext_instr->getOperand(0);
+
+      auto src_type_llvm = zext_instr->getSrcTy();
+
+      auto dst_reg = this->temp_map_->at(&inst);
+      auto src_reg = this->temp_map_->at(src_operand_llvm);
+
+      uint32_t src_bits = 64;
+
+      if (auto int_type_llvm = llvm::dyn_cast<llvm::IntegerType>(src_type_llvm)){
+          src_bits = int_type_llvm->getBitWidth();
+      } else if (src_type_llvm->isPointerTy()){
+          src_bits = 64;
+      }
+
+      if (src_bits == 1){
+          instr_list->Append(new assem::OperInstr("movzbq `s0,`d0",
+                                                  new temp::TempList({dst_reg}),
+                                                  new temp::TempList({src_reg}),
+                                                  nullptr));
+      } else if (src_bits == 16) {
+          instr_list->Append(new assem::OperInstr("movzwq `s0,`d0",
+                                                  new temp::TempList({dst_reg}),
+                                                  new temp::TempList({src_reg}),
+                                                  nullptr));
+      } else if (src_bits == 32) {
+          instr_list->Append(new assem::OperInstr("movl `s0,`d0",
+                                                  new temp::TempList({dst_reg}),
+                                                  new temp::TempList({src_reg}),
+                                                  nullptr));
+      }
+
+      return;
   }
+
+    if (auto * sext_instr = llvm::dyn_cast<llvm::SExtInst>(&inst)){
+        auto src_operand_llvm = sext_instr->getOperand(0);
+        
+        auto src_type_llvm = sext_instr->getSrcTy();
+        
+        auto dst_reg = this->temp_map_->at(&inst);
+        
+        auto src_reg = this->temp_map_->at(src_operand_llvm);
+        
+        uint32_t src_bits = 64;
+
+        if (auto int_type_llvm = llvm::dyn_cast<llvm::IntegerType>(src_type_llvm)) {
+            src_bits = int_type_llvm->getBitWidth();
+        } else if (src_type_llvm->isPointerTy()) {
+            src_bits = 64;
+        }
+
+        if (src_bits == 1) {
+            instr_list->Append(new assem::OperInstr("movsbq `s0,`d0",
+                                                    new temp::TempList({dst_reg}),
+                                                    new temp::TempList({src_reg}),
+                                                    nullptr));
+        } else if (src_bits == 16) {
+            instr_list->Append(new assem::OperInstr("movswq `s0,`d0",
+                                                    new temp::TempList({dst_reg}),
+                                                    new temp::TempList({src_reg}),
+                                                    nullptr));
+        } else if (src_bits == 32) {
+            instr_list->Append(new assem::OperInstr("movslq `s0,`d0",
+                                                    new temp::TempList({dst_reg}),
+                                                    new temp::TempList({src_reg}),
+                                                    nullptr));
+        }
+
+        return; 
+    }
 
   if (auto * call_instr = llvm::dyn_cast<llvm::CallInst>(&inst)){
       auto caller_save_regs = reg_manager->CallerSaves();
@@ -576,7 +641,8 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
                                                   nullptr));
 
           /* 传参 */
-          arg_operand_index = 2;
+          /* FIXME: static link 是否作为参数之一? */
+          arg_operand_index = 1;
           while (arg_operand_index < arg_operand_count) {
               auto arg_operand_llvm = call_instr->getOperand(arg_operand_index);
               if (arg_reg_iter != arg_regs->GetList().end()) {
@@ -645,19 +711,270 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
   }
 
   if (auto * ret_instr = llvm::dyn_cast<llvm::ReturnInst>(&inst)){
+    if (auto ret_val_llvm = ret_instr->getReturnValue()){
+        if (auto constant = llvm::dyn_cast<llvm::ConstantInt>(ret_val_llvm)){
+            instr_list->Append(new assem::OperInstr("movq $" + std::to_string(constant->getSExtValue()) + ",`d0",
+                                                    new temp::TempList({reg_manager->GetRegister(frame::X64RegManager::Reg::RAX)}),
+                                                    nullptr,
+                                                    nullptr));
+        } else {
+            auto ret_reg = this->temp_map_->at(ret_val_llvm);
+            instr_list->Append(new assem::OperInstr("movq `s0,`d0",
+                                                    new temp::TempList({reg_manager->GetRegister(frame::X64RegManager::Reg::RAX)}),
+                                                    new temp::TempList({ret_reg}),
+                                                    nullptr));
+        }
+    }
 
+    instr_list->Append(new assem::OperInstr("jmp " + std::string(function_name) + "_ret",
+                                            nullptr,
+                                            nullptr,
+                                            nullptr));
   }
 
   if (auto * br_instr = llvm::dyn_cast<llvm::BranchInst>(&inst)){
+    if (br_instr->isConditional()){
+        auto condition = br_instr->getCondition();
+        auto true_block = br_instr->getSuccessor(0);
+        auto false_block = br_instr->getSuccessor(1);
 
+        auto condition_reg = this->temp_map_->at(condition);
+        auto true_block_label = true_block->getName().str();
+        auto false_block_label = false_block->getName().str();
+
+        
+        instr_list->Append(new assem::OperInstr("movq $" + std::to_string(this->bb_map_->at(br_instr->getParent())) + ",`d0",
+                                                new temp::TempList({last_bb_index_reg}),
+                                                nullptr,
+                                                nullptr));
+
+        instr_list->Append(new assem::OperInstr("cmp $0x1,`s0",
+                                                nullptr,
+                                                new temp::TempList({condition_reg}),
+                                                nullptr));
+
+        instr_list->Append(new assem::OperInstr("je " + true_block_label,
+                                                nullptr,
+                                                nullptr,
+                                                nullptr));
+
+        instr_list->Append(new assem::OperInstr("jmp " + false_block_label,
+                                                nullptr,
+                                                nullptr,
+                                                nullptr));
+    } else {
+        auto target_block = br_instr->getSuccessor(0);
+        auto target_block_label = target_block->getName().str();
+
+        instr_list->Append(new assem::OperInstr("movq $" + std::to_string(this->bb_map_->at(br_instr->getParent())) + ",`d0",
+                                                new temp::TempList({last_bb_index_reg}),
+                                                nullptr,
+                                                nullptr));
+
+        instr_list->Append(new assem::OperInstr("jmp " + target_block_label,
+                                                nullptr,
+                                                nullptr,
+                                                nullptr));
+    }
+    return;
   }
 
   if (auto * icmp_instr = llvm::dyn_cast<llvm::ICmpInst>(&inst)){
+      auto predicate = icmp_instr->getPredicate();
+      auto l_operand_llvm = icmp_instr->getOperand(0);
+      auto r_operand_llvm = icmp_instr->getOperand(1);
+      auto l_constant = llvm::dyn_cast<llvm::ConstantInt>(l_operand_llvm);
+      auto r_constant = llvm::dyn_cast<llvm::ConstantInt>(r_operand_llvm);
+      auto l_constant_value = l_constant == nullptr ? 0 : l_constant->getSExtValue();
+      auto r_constant_value = r_constant == nullptr ? 0 : r_constant->getSExtValue();
+      auto l_operand_reg = l_constant == nullptr ? this->temp_map_->at(l_operand_llvm) : nullptr;
+      auto r_operand_reg = r_constant == nullptr ? this->temp_map_->at(r_operand_llvm) : nullptr;
+      auto dst_reg = this->temp_map_->at(&inst);
 
+      instr_list->Append(new assem::OperInstr("movq $0,`d0",
+                                              new temp::TempList({dst_reg}),
+                                              nullptr,
+                                              nullptr));
+
+      if (l_constant == nullptr && r_constant != nullptr) {
+          instr_list->Append(new assem::OperInstr("cmpq $" + std::to_string(r_constant_value) + ",`s0",
+                                                  nullptr,
+                                                  new temp::TempList({l_operand_reg}),
+                                                  nullptr));
+      } else if (l_constant != nullptr && r_constant == nullptr) {
+          instr_list->Append(new assem::OperInstr("cmpq `s0,$" + std::to_string(l_constant_value),
+                                                  nullptr,
+                                                  new temp::TempList({r_operand_reg}),
+                                                  nullptr));
+      } else if (l_constant != nullptr && r_constant != nullptr) {
+          instr_list->Append(new assem::OperInstr("cmpq $" + std::to_string(r_constant_value) + ",$" + std::to_string(l_constant_value),
+                                                  nullptr,
+                                                  nullptr,
+                                                  nullptr));
+      } else if (l_constant == nullptr && r_constant == nullptr) {
+          instr_list->Append(new assem::OperInstr("cmpq `s0,`s1",
+                                                  nullptr,
+                                                  new temp::TempList({r_operand_reg, l_operand_reg}),
+                                                  nullptr));
+      }
+
+      if (predicate == llvm::CmpInst::ICMP_SLT){
+          instr_list->Append(new assem::OperInstr("setl `d0",
+                                                  new temp::TempList({dst_reg}),
+                                                  nullptr,
+                                                  nullptr));
+          return;
+      }
+
+      if (predicate == llvm::CmpInst::ICMP_SLE){
+          instr_list->Append(new assem::OperInstr("setle `d0",
+                                                  new temp::TempList({dst_reg}),
+                                                  nullptr,
+                                                  nullptr));
+          return;
+      }
+
+      if (predicate == llvm::CmpInst::ICMP_EQ){
+          instr_list->Append(new assem::OperInstr("sete `d0",
+                                                  new temp::TempList({dst_reg}),
+                                                  nullptr,
+                                                  nullptr));
+          return;
+      }
+
+      if (predicate == llvm::CmpInst::ICMP_NE){
+          instr_list->Append(new assem::OperInstr("setne `d0",
+                                                  new temp::TempList({dst_reg}),
+                                                  nullptr,
+                                                  nullptr));
+          return;
+      }
+
+      if (predicate == llvm::CmpInst::ICMP_SGE){
+          instr_list->Append(new assem::OperInstr("setge `d0",
+                                                  new temp::TempList({dst_reg}),
+                                                  nullptr,
+                                                  nullptr));
+          return;
+      }
+
+      if (predicate == llvm::CmpInst::ICMP_SGT){
+          instr_list->Append(new assem::OperInstr("setg `d0",
+                                                  new temp::TempList({dst_reg}),
+                                                  nullptr,
+                                                  nullptr));
+          return;
+      }
+      return;
   }
 
   if (auto *phi_instr = llvm::dyn_cast<llvm::PHINode>(&inst)){
+      auto true_block = phi_instr->getIncomingBlock(0);
+      auto true_value_llvm = phi_instr->getIncomingValue(0);
 
+      auto false_block = phi_instr->getIncomingBlock(1);
+      auto false_value_llvm = phi_instr->getIncomingValue(1);
+
+      auto dst_reg = this->temp_map_->at(&inst);
+
+      auto phi_label_true_branch = std::string(function_name) + "_phi_" + std::to_string(phi_count++);
+      auto phi_label_false_branch = std::string(function_name) + "_phi_" + std::to_string(phi_count++);
+      auto phi_label_next = std::string(function_name) + "_phi_" + std::to_string(phi_count++);
+
+      instr_list->Append(new assem::OperInstr("cmpq $" + std::to_string(this->bb_map_->at(true_block)) + ",`s0",
+                                              nullptr,
+                                              new temp::TempList({last_bb_index_reg}),
+                                              nullptr));
+
+
+      instr_list->Append(new assem::OperInstr("je " + phi_label_true_branch,
+                                              nullptr,
+                                              nullptr,
+                                              nullptr));
+
+      instr_list->Append(new assem::OperInstr("jmp " + phi_label_false_branch,
+                                              nullptr,
+                                              nullptr,
+                                              nullptr));
+
+      instr_list->Append(new assem::LabelInstr(phi_label_true_branch));
+
+      if (llvm::isa<llvm::ConstantPointerNull>(true_value_llvm)) {
+          instr_list->Append(new assem::OperInstr("movq $0,`d0",
+                                                  new temp::TempList({dst_reg}),
+                                                  nullptr,
+                                                  nullptr));
+      } else if (llvm::isa<llvm::ConstantInt>(true_value_llvm)) {
+          auto constant_int = llvm::dyn_cast<llvm::ConstantInt>(true_value_llvm)->getSExtValue();
+
+          instr_list->Append(new assem::OperInstr("movq $" + std::to_string(constant_int) + ",`d0",
+                                                  new temp::TempList({dst_reg}),
+                                                  nullptr,
+                                                  nullptr));
+      } else {
+          auto src_reg = this->temp_map_->at(true_value_llvm);
+          instr_list->Append(new assem::OperInstr("movq `s0,`d0",
+                                                  new temp::TempList({dst_reg}),
+                                                  new temp::TempList({src_reg}),
+                                                  nullptr));
+      }
+
+      instr_list->Append(new assem::OperInstr("jmp " + phi_label_next,
+                                              nullptr,
+                                              nullptr,
+                                              nullptr));
+
+      instr_list->Append(new assem::LabelInstr(phi_label_false_branch));
+
+      if (llvm::isa<llvm::ConstantPointerNull>(false_value_llvm)){
+          instr_list->Append(new assem::OperInstr("movq $0,`d0",
+                                                  new temp::TempList({dst_reg}),
+                                                  nullptr,
+                                                  nullptr));
+      } else if (llvm::isa<llvm::ConstantInt>(false_value_llvm)) {
+          auto constant_int = llvm::dyn_cast<llvm::ConstantInt>(false_value_llvm)->getSExtValue();
+
+          instr_list->Append(new assem::OperInstr("movq $" + std::to_string(constant_int) + ",`d0",
+                                                  new temp::TempList({dst_reg}),
+                                                  nullptr,
+                                                  nullptr));
+      } else {
+          auto src_reg = this->temp_map_->at(false_value_llvm);
+          instr_list->Append(new assem::OperInstr("movq `s0,`d0",
+                                                  new temp::TempList({dst_reg}),
+                                                  new temp::TempList({src_reg}),
+                                                  nullptr));
+      }
+
+      instr_list->Append(new assem::OperInstr("jmp " + phi_label_next,
+                                              nullptr,
+                                              nullptr,
+                                              nullptr));
+
+      instr_list->Append(new assem::LabelInstr(phi_label_next));
+
+      //   temp::Temp *another_src_reg = nullptr;
+
+      //   if (llvm::isa<llvm::ConstantPointerNull>(false_value_llvm)){
+      //       another_src_reg = temp::TempFactory::NewTemp();
+
+      //       instr_list->Append(new assem::OperInstr("movq $0,`d0",
+      //                                               new temp::TempList({another_src_reg}),
+      //                                               nullptr,
+      //                                               nullptr));
+      //   } else {
+      //       another_src_reg = this->temp_map_->at(false_value_llvm);
+      //   }
+
+      //   instr_list->Append(new assem::OperInstr("cmpq $" + std::to_string(this->bb_map_->at(false_block)) + ",`s0",
+      //                                           nullptr,
+      //                                           new temp::TempList(last_bb_index_reg),
+      //                                           nullptr));
+
+      //   instr_list->Append(new assem::OperInstr("cmove `s0,`d0",
+      //                                           new temp::TempList({dst_reg}),
+      //                                           new temp::TempList({another_src_reg}),
+      //                                           nullptr));
   }
 }
 
