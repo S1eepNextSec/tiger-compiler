@@ -905,7 +905,17 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
                                                   nullptr,
                                                   nullptr));
       } else if (llvm::isa<llvm::ConstantInt>(true_value_llvm)) {
-          auto constant_int = llvm::dyn_cast<llvm::ConstantInt>(true_value_llvm)->getSExtValue();
+          int64_t constant_int = 0;
+
+          llvm::ConstantInt *constant = llvm::dyn_cast<llvm::ConstantInt>(true_value_llvm);
+
+          if (constant->getBitWidth() == 1){
+              constant_int = constant->getZExtValue();
+          } else {
+              constant_int = constant->getSExtValue();
+          }
+
+        //   auto constant_int = llvm::dyn_cast<llvm::ConstantInt>(true_value_llvm)->getSExtValue();
 
           instr_list->Append(new assem::OperInstr("movq $" + std::to_string(constant_int) + ",`d0",
                                                   new temp::TempList({dst_reg}),
@@ -932,7 +942,15 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
                                                   nullptr,
                                                   nullptr));
       } else if (llvm::isa<llvm::ConstantInt>(false_value_llvm)) {
-          auto constant_int = llvm::dyn_cast<llvm::ConstantInt>(false_value_llvm)->getSExtValue();
+          int64_t constant_int = 0;
+
+          llvm::ConstantInt *constant = llvm::dyn_cast<llvm::ConstantInt>(false_value_llvm);
+          
+          if (constant->getBitWidth() == 1) {
+              constant_int = constant->getZExtValue();
+          } else {
+              constant_int = constant->getSExtValue();
+          }
 
           instr_list->Append(new assem::OperInstr("movq $" + std::to_string(constant_int) + ",`d0",
                                                   new temp::TempList({dst_reg}),
