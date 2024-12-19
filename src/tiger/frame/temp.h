@@ -20,6 +20,9 @@ private:
   static LabelFactory label_factory;
 };
 
+/**
+ * Temp 用来抽象一个临时寄存器
+ */
 class Temp {
   friend class TempFactory;
 
@@ -27,10 +30,13 @@ public:
   [[nodiscard]] int Int() const;
 
 private:
-  int num_;
+  int num_; //编号
   explicit Temp(int num) : num_(num) {}
 };
 
+/**
+ * TempFactory 用来创建一个新的临时寄存器 Temp
+ */
 class TempFactory {
 public:
   static Temp *NewTemp();
@@ -40,6 +46,9 @@ private:
   static TempFactory temp_factory;
 };
 
+/**
+ * Map 记录临时寄存器到真实寄存器的映射
+ */
 class Map {
 public:
   void Enter(Temp *t, std::string *s);

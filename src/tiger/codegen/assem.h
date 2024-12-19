@@ -16,6 +16,9 @@ public:
   explicit Targets(std::vector<temp::Label *> *labels) : labels_(labels) {}
 };
 
+/**
+ * Instr 类用来抽象一条汇编指令
+ */
 class Instr {
 public:
   virtual ~Instr() = default;
@@ -27,9 +30,9 @@ public:
 
 class OperInstr : public Instr {
 public:
-  std::string assem_;
-  temp::TempList *dst_, *src_;
-  Targets *jumps_;
+  std::string assem_; //  汇编指令文本
+  temp::TempList *dst_, *src_;  //  指令设计的 src list & dst list
+  Targets *jumps_;  // 跳转目标 包含则说明对应的指令为跳转指令
 
   OperInstr(std::string assem, temp::TempList *dst, temp::TempList *src,
             Targets *jumps)
@@ -42,8 +45,8 @@ public:
 
 class LabelInstr : public Instr {
 public:
-  std::string assem_;
-  temp::Label *label_;
+  std::string assem_; //  汇编指令文本
+  temp::Label *label_;  //  Label的内容
   LabelInstr(std::string assem)
       : assem_(assem), label_(temp::LabelFactory::NamedLabel(assem)) {}
 
@@ -54,7 +57,7 @@ public:
 
 class MoveInstr : public Instr {
 public:
-  std::string assem_;
+  std::string assem_; //  汇编指令文本
   temp::TempList *dst_, *src_;
 
   MoveInstr(std::string assem, temp::TempList *dst, temp::TempList *src)
@@ -78,8 +81,9 @@ public:
   [[nodiscard]] const std::list<Instr *> &GetList() const {
     return instr_list_;
   }
+  void PushFront(assem::Instr *instr) { instr_list_.push_front(instr); }
 
-private:
+  private:
   std::list<Instr *> instr_list_;
 };
 

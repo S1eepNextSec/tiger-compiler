@@ -3,6 +3,8 @@
 
 #include <list>
 #include <memory>
+#include <unordered_set>
+#include <unordered_map>
 
 #include "tiger/absyn/absyn.h"
 #include "tiger/env/env.h"

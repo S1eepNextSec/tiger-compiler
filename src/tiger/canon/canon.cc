@@ -3,6 +3,10 @@
 
 namespace canon {
 
+/**
+ * ·  将函数中每个 Basic Block 的名称全局唯一化
+ *    避免生成的汇编文件中出现冲突
+ */
 canon::BasicBlockList *Canon::BasicBlocks() {
   auto *basicblock_list = new BasicBlockList();
   for (auto &&basicblock : body_->getBasicBlockList()) {

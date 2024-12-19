@@ -15,6 +15,13 @@
 #include "llvm/Support/raw_ostream.h"
 #include <map>
 
+/**
+ *  - frame_info_map    记录 函数名 -> offset space & framesize 映射
+ *  - frags             记录 对应于汇编文件中各个部分的 frag 结构
+ *                      - StringFrag -> 全局字符串
+ *                      - ProcFrag   -> 函数
+ *                      - FramesizeFrag -> 全局栈帧大小
+ */
 extern frame::RegManager *reg_manager;
 extern frame::Frags *frags;
 extern llvm::IRBuilder<> *ir_builder;
@@ -22,6 +29,11 @@ extern llvm::Module *ir_module;
 std::map<std::string, std::pair<int, int>> frame_info_map;
 
 namespace output {
+/**
+ * 读取 llvm ir 文件
+ * 将其中全局变量 & 函数加载到对应结构中
+ * 将 ir 翻译成 汇编
+ */
 void AssemGen::LoadllvmAndGen(bool need_ra) {
   llvm::LLVMContext context;
   llvm::SMDiagnostic error;
@@ -88,6 +100,12 @@ void AssemGen::LoadllvmAndGen(bool need_ra) {
   GenAssem(need_ra);
 }
 
+/**
+ * 生成汇编文件
+ * · 生成 .text 部分 包含所有函数
+ * · 生成 .section .rodata 部分 包含字符串 & 全局栈帧大小
+
+ */
 void AssemGen::GenAssem(bool need_ra) {
   frame::Frag::OutputPhase phase;
 
