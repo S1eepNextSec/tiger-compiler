@@ -57,14 +57,23 @@ public:
   tab::Table<temp::Temp, INode> *GetTempNodeMap() { return temp_node_map_; }
 
 private:
+  /* 控制流图 */
   fg::FGraphPtr flowgraph_;
-  LiveGraph live_graph_;
 
+  /* 活性图 */
+  LiveGraph live_graph_;
+  
+  /* 映射 instruction -> live_in_regs */
   std::unique_ptr<graph::Table<assem::Instr, temp::TempList>> in_;
+
+  /* 映射 instruction -> live_out_regs */
   std::unique_ptr<graph::Table<assem::Instr, temp::TempList>> out_;
   tab::Table<temp::Temp, INode> *temp_node_map_;
 
+  /* 进行寄存器活性分析 */
   void LiveMap();
+
+  /* 根据活性分析结果进行相干图构建 */
   void InterfGraph();
 };
 

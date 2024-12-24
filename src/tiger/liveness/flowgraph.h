@@ -15,17 +15,26 @@ using FNodeListPtr = graph::NodeList<assem::Instr> *;
 using FGraph = graph::Graph<assem::Instr>;
 using FGraphPtr = graph::Graph<assem::Instr> *;
 
+/* 构造控制流图的工厂类 */
 class FlowGraphFactory {
 public:
   explicit FlowGraphFactory(assem::InstrList *instr_list)
       : instr_list_(instr_list), flowgraph_(new FGraph()),
         label_map_(std::make_unique<std::map<std::string, FNode *>>()) {}
+  
+  /* 构造控制流图 */
   void AssemFlowGraph();
+  
   FGraphPtr GetFlowGraph() { return flowgraph_; }
 
 private:
+  /* 指令列表 */
   assem::InstrList *instr_list_;
+  
+  /* 控制流图 */
   FGraphPtr flowgraph_;
+  
+  /* 映射 label -> node , 辅助完成控制流构建 */
   std::unique_ptr<std::map<std::string, FNode *>> label_map_;
 };
 

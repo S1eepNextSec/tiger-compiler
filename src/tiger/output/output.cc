@@ -168,6 +168,16 @@ void ProcFrag::OutputAssem(FILE *out, OutputPhase phase, bool need_ra) const {
 
   assem::InstrList *il = assem_instr.get()->GetInstrList();
 
+  //FIXME: delete need_ra (for debug )
+  // need_ra = true;
+
+  //FIXME: delete this (for debug)
+  ra::RegAllocator reg_allocator(body_->getName().str(),
+                                 std::move(assem_instr));
+  reg_allocator.RegAlloc();
+  il = reg_allocator.assem_instr_->GetInstrList();
+  // FIXME: delete this (for debug)
+
   if (need_ra) {
     // Lab 6: register allocation
     TigerLog("----====Register allocate====-----\n");

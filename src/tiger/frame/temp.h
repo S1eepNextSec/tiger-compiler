@@ -74,6 +74,7 @@ public:
   TempList(std::initializer_list<Temp *> list) : temp_list_(list) {}
   TempList() = default;
 
+  void Clear() { temp_list_.clear(); }
   bool Contain(Temp *a) const;
   bool Equal(TempList *tl) const;
   void Replace(Temp *old_temp, Temp *new_temp);

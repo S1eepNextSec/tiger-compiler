@@ -14,6 +14,7 @@ public:
   std::vector<temp::Label *> *labels_;
 
   explicit Targets(std::vector<temp::Label *> *labels) : labels_(labels) {}
+  Targets(std::initializer_list<temp::Label *> list) { labels_ = new std::vector<temp::Label *>(list); }
 };
 
 /**

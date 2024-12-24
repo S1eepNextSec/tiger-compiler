@@ -245,10 +245,11 @@ assem::Proc *ProcEntryExit3(std::string_view function_name,
                                        new temp::TempList({reg_manager->GetRegister(frame::X64RegManager::Reg::RSP)}),
                                        nullptr,
                                        nullptr));
-  body->PushFront(new assem::OperInstr(std::string(function_name) + ":",
-                                       nullptr,
-                                       nullptr,
-                                       nullptr));
+  // body->PushFront(new assem::OperInstr(std::string(function_name) + ":",
+  //                                      nullptr,
+  //                                      nullptr,
+  //                                      nullptr));
+  body->PushFront(new assem::LabelInstr(std::string(function_name)));
 
   body->Append(new assem::OperInstr("addq $" + std::string(function_name) + "_framesize_local,`d0",
                                     new temp::TempList(reg_manager->GetRegister(frame::X64RegManager::Reg::RSP)),

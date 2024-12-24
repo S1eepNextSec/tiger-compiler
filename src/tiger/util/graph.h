@@ -253,8 +253,10 @@ void Graph<T>::Show(FILE *out, NodeList<T> *p,
     if (show_info)
       show_info(n->NodeInfo());
     fprintf(out, " (%d): ", n->Key());
+    fprintf(out, "[succ] ");
     for (auto q : n->Succ()->node_list_)
-      fprintf(out, "%d ", q->Key());
+        fprintf(out, "%d ", q->Key());
+    fprintf(out, "[pred] ");
     for (auto q : n->Pred()->node_list_)
       fprintf(out, "%d ", q->Key());
     fprintf(out, "\n");

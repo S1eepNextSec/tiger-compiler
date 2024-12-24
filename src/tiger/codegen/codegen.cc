@@ -340,8 +340,8 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
                                                       nullptr));
 
               instr_list->Append(new assem::OperInstr("cqto",
-                                                      nullptr,
-                                                      nullptr,
+                                                      new temp::TempList({reg_manager->GetRegister(frame::X64RegManager::Reg::RDX)}),
+                                                      new temp::TempList({reg_manager->GetRegister(frame::X64RegManager::Reg::RAX)}),
                                                       nullptr));
 
               instr_list->Append(new assem::OperInstr("idivq `s0",
@@ -361,8 +361,8 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
                                                       nullptr));
 
               instr_list->Append(new assem::OperInstr("cqto",
-                                                      nullptr,
-                                                      nullptr,
+                                                      new temp::TempList({reg_manager->GetRegister(frame::X64RegManager::Reg::RDX)}),
+                                                      new temp::TempList({reg_manager->GetRegister(frame::X64RegManager::Reg::RAX)}),
                                                       nullptr));
 
               instr_list->Append(new assem::OperInstr("idivq `s0",
@@ -381,8 +381,8 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
                                                       nullptr,
                                                       nullptr));
               instr_list->Append(new assem::OperInstr("cqto",
-                                                      nullptr,
-                                                      nullptr,
+                                                      new temp::TempList({reg_manager->GetRegister(frame::X64RegManager::Reg::RDX)}),
+                                                      new temp::TempList({reg_manager->GetRegister(frame::X64RegManager::Reg::RAX)}),
                                                       nullptr));
 
               instr_list->Append(new assem::OperInstr("idivq `s0",
@@ -394,8 +394,8 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
                                                       new temp::TempList({reg_manager->GetRegister(frame::X64RegManager::Reg::RAX)}),
                                                       new temp::TempList({l_operand_reg})));
               instr_list->Append(new assem::OperInstr("cqto",
-                                                      nullptr,
-                                                      nullptr,
+                                                      new temp::TempList({reg_manager->GetRegister(frame::X64RegManager::Reg::RDX)}),
+                                                      new temp::TempList({reg_manager->GetRegister(frame::X64RegManager::Reg::RAX)}),
                                                       nullptr));
               instr_list->Append(new assem::OperInstr("idivq `s0",
                                                       nullptr,
@@ -594,6 +594,7 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
       int arg_operand_index = 0;
       auto arg_regs = reg_manager->ArgRegs();
       auto arg_reg_iter = arg_regs->GetList().begin();
+      auto formal_machine_regs = new temp::TempList();
 
       if (call_instr->getCalledFunction()->isDeclaration()) {
           /* 传参 */
@@ -612,6 +613,8 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
                                                               new temp::TempList({*arg_reg_iter}),
                                                               new temp::TempList({arg_operand_reg})));
                   }
+
+                  formal_machine_regs->Append(*arg_reg_iter);
                   arg_reg_iter++;
               } else {
                   if (auto *constant = llvm::dyn_cast<llvm::ConstantInt>(arg_operand_llvm)) {
@@ -658,6 +661,8 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
                                                               new temp::TempList({*arg_reg_iter}),
                                                               new temp::TempList({arg_operand_reg})));
                   }
+
+                  formal_machine_regs->Append(*arg_reg_iter);
                   arg_reg_iter++;
               } else {
                   if (auto *constant = llvm::dyn_cast<llvm::ConstantInt>(arg_operand_llvm)) {
@@ -687,8 +692,8 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
                                                   nullptr));
           auto callee_function_name = call_instr->getCalledFunction()->getName().str();
           instr_list->Append(new assem::OperInstr("callq " + callee_function_name,
-                                                  nullptr,
-                                                  nullptr,
+                                                  reg_manager->CallerSaves(),
+                                                  formal_machine_regs,
                                                   nullptr));
           auto dst_reg = this->temp_map_->at(static_cast<llvm::Value *>(&inst));
           instr_list->Append(new assem::MoveInstr("movq `s0,`d0",
@@ -726,10 +731,10 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
         }
     }
 
-    instr_list->Append(new assem::OperInstr("jmp " + std::string(function_name) + "_ret",
+    instr_list->Append(new assem::OperInstr("jmp `j0",
                                             nullptr,
                                             nullptr,
-                                            nullptr));
+                                            new assem::Targets({temp::LabelFactory::NamedLabel(std::string(function_name) + "_ret")})));
   }
 
   if (auto * br_instr = llvm::dyn_cast<llvm::BranchInst>(&inst)){
@@ -738,9 +743,30 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
         auto true_block = br_instr->getSuccessor(0);
         auto false_block = br_instr->getSuccessor(1);
 
-        auto condition_reg = this->temp_map_->at(condition);
         auto true_block_label = true_block->getName().str();
         auto false_block_label = false_block->getName().str();
+
+        if (llvm::isa<llvm::ConstantInt>(condition)){
+            auto constant = llvm::dyn_cast<llvm::ConstantInt>(condition);
+            auto is_zero = constant->isZero();
+
+            if (is_zero){
+                instr_list->Append(new assem::OperInstr("jmp `j0",
+                                                        nullptr,
+                                                        nullptr,
+                                                        new assem::Targets({temp::LabelFactory::NamedLabel(false_block_label)})));
+            } else {
+                instr_list->Append(new assem::OperInstr("jmp `j0",
+                                                        nullptr,
+                                                        nullptr,
+                                                        new assem::Targets({temp::LabelFactory::NamedLabel(true_block_label)})));
+            }
+            
+            return;
+        }
+
+        auto condition_reg = this->temp_map_->at(condition);
+
 
         
         instr_list->Append(new assem::OperInstr("movq $" + std::to_string(this->bb_map_->at(br_instr->getParent())) + ",`d0",
@@ -753,15 +779,15 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
                                                 new temp::TempList({condition_reg}),
                                                 nullptr));
 
-        instr_list->Append(new assem::OperInstr("je " + true_block_label,
+        instr_list->Append(new assem::OperInstr("je `j0",
                                                 nullptr,
                                                 nullptr,
-                                                nullptr));
+                                                new assem::Targets({temp::LabelFactory::NamedLabel(true_block_label)})));
 
-        instr_list->Append(new assem::OperInstr("jmp " + false_block_label,
+        instr_list->Append(new assem::OperInstr("jmp `j0",
                                                 nullptr,
                                                 nullptr,
-                                                nullptr));
+                                                new assem::Targets({temp::LabelFactory::NamedLabel(false_block_label)})));
     } else {
         auto target_block = br_instr->getSuccessor(0);
         auto target_block_label = target_block->getName().str();
@@ -771,10 +797,10 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
                                                 nullptr,
                                                 nullptr));
 
-        instr_list->Append(new assem::OperInstr("jmp " + target_block_label,
+        instr_list->Append(new assem::OperInstr("jmp `j0",
                                                 nullptr,
                                                 nullptr,
-                                                nullptr));
+                                                new assem::Targets({temp::LabelFactory::NamedLabel(target_block_label)})));
     }
     return;
   }
@@ -886,16 +912,15 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
                                               new temp::TempList({last_bb_index_reg}),
                                               nullptr));
 
+      instr_list->Append(new assem::OperInstr("je `j0",
+                                              nullptr,
+                                              nullptr,
+                                              new assem::Targets({temp::LabelFactory::NamedLabel(phi_label_true_branch)})));
 
-      instr_list->Append(new assem::OperInstr("je " + phi_label_true_branch,
+      instr_list->Append(new assem::OperInstr("jmp `j0",
                                               nullptr,
                                               nullptr,
-                                              nullptr));
-
-      instr_list->Append(new assem::OperInstr("jmp " + phi_label_false_branch,
-                                              nullptr,
-                                              nullptr,
-                                              nullptr));
+                                              new assem::Targets({temp::LabelFactory::NamedLabel(phi_label_false_branch)})));
 
       instr_list->Append(new assem::LabelInstr(phi_label_true_branch));
 
@@ -929,10 +954,10 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
                                                   nullptr));
       }
 
-      instr_list->Append(new assem::OperInstr("jmp " + phi_label_next,
+      instr_list->Append(new assem::OperInstr("jmp `j0",
                                               nullptr,
                                               nullptr,
-                                              nullptr));
+                                              new assem::Targets({temp::LabelFactory::NamedLabel(phi_label_next)})));
 
       instr_list->Append(new assem::LabelInstr(phi_label_false_branch));
 
@@ -964,10 +989,10 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
                                                   nullptr));
       }
 
-      instr_list->Append(new assem::OperInstr("jmp " + phi_label_next,
+      instr_list->Append(new assem::OperInstr("jmp `j0",
                                               nullptr,
                                               nullptr,
-                                              nullptr));
+                                              new assem::Targets({temp::LabelFactory::NamedLabel(phi_label_next)})));
 
       instr_list->Append(new assem::LabelInstr(phi_label_next));
 
