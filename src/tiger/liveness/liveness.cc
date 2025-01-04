@@ -258,7 +258,7 @@ void LiveGraphFactory::InterfGraph() {
 void LiveGraphFactory::Liveness() {
   LiveMap();
 
-  this->PrintLiveOutSet(reg_manager);
+//   this->PrintLiveOutSet(reg_manager);
   
   InterfGraph();
 }
