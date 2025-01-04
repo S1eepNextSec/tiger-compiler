@@ -859,11 +859,6 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
                                                   nullptr));
       }
 
-      instr_list->Append(new assem::OperInstr("movq $0,`d0",
-                                              new temp::TempList({dst_reg}),
-                                              new temp::TempList({}),
-                                              nullptr));
-
       if (predicate == llvm::CmpInst::ICMP_SLT){
           instr_list->Append(new assem::OperInstr("setl `d0",
                                                   new temp::TempList({dst_reg}),
