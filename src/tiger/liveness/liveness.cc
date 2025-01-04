@@ -1,5 +1,6 @@
 #include "tiger/liveness/liveness.h"
 #include <queue>
+#include <unordered_set>
 extern frame::RegManager *reg_manager;
 
 namespace live {
@@ -153,61 +154,112 @@ void LiveGraphFactory::LiveMap() {
 
 void LiveGraphFactory::InterfGraph() {
   /* TODO: Put your lab6 code here */
+  for (const auto & fnode : this->flowgraph_->Nodes()->GetList()){
+      auto instr = fnode->NodeInfo();
 
+      auto out_set = *this->out_->Look(fnode);
+
+      auto use_p = fnode->NodeInfo()->Use();
+      auto def_p = fnode->NodeInfo()->Def();
+
+      auto use_reg_list = use_p ? *use_p : temp::TempList();
+      auto def_reg_list = def_p ? *def_p : temp::TempList();
+
+      if (typeid(*instr) == typeid(assem::MoveInstr)) {
+          for (const auto &use_reg : use_reg_list.GetList()) {
+              out_set.Delete(use_reg);
+          }
+      }
+
+      for (const auto & def_reg : def_reg_list.GetList()){
+          if (out_set.Contain(def_reg)) {
+              continue;
+          }
+
+          out_set.Append(def_reg);
+      }
+
+      for (const auto & def_reg : def_reg_list.GetList()){
+        for (const auto & target : out_set.GetList()){
+            if (def_reg == target){
+                continue;
+            }
+
+            live::INodePtr node_i = this->temp_node_map_->Look(def_reg);
+            live::INodePtr node_j = this->temp_node_map_->Look(target);
+
+            if (!node_i) {
+                node_i = this->live_graph_.interf_graph->NewNode(def_reg);
+                this->temp_node_map_->Enter(def_reg, node_i);
+            }
+
+            if (!node_j) {
+                node_j = this->live_graph_.interf_graph->NewNode(target);
+                this->temp_node_map_->Enter(target, node_j);
+            }
+
+            if (!node_i->Adj(node_j)) {
+                this->live_graph_.interf_graph->AddEdge(node_i, node_j);
+            }
+        }
+      }
+      //   auto temp_count = out_set->GetList().size();
+
+      //   for (int i = 0; i < temp_count; i++){
+      //       for (int j = i + 1; j < temp_count;j++){
+      //           auto temp_i = out_set->NthTemp(i);
+      //           auto temp_j = out_set->NthTemp(j);
+
+      //           live::INodePtr node_i = this->temp_node_map_->Look(temp_i);
+      //           live::INodePtr node_j = this->temp_node_map_->Look(temp_j);
+
+      //           if (! node_i){
+      //               node_i = this->live_graph_.interf_graph->NewNode(temp_i);
+      //               this->temp_node_map_->Enter(temp_i, node_i);
+      //           }
+
+      //           if (! node_j){
+      //               node_j = this->live_graph_.interf_graph->NewNode(temp_j);
+      //               this->temp_node_map_->Enter(temp_j, node_j);
+      //           }
+
+      //           if (! node_i->Adj(node_j)){
+      //               this->live_graph_.interf_graph->AddEdge(node_i, node_j);
+      //           }
+      //       }
+      //   }
+
+      if (typeid(*instr) == typeid(assem::MoveInstr)){
+          auto use_reg = *instr->Use()->GetList().begin();
+          auto def_reg = *instr->Def()->GetList().begin();
+
+          auto node_use = this->temp_node_map_->Look(use_reg);
+          auto node_def = this->temp_node_map_->Look(def_reg);
+
+          if (!node_use) {
+              node_use = this->live_graph_.interf_graph->NewNode(use_reg);
+              this->temp_node_map_->Enter(use_reg, node_use);
+          }
+
+          if (!node_def) {
+              node_def = this->live_graph_.interf_graph->NewNode(def_reg);
+              this->temp_node_map_->Enter(def_reg, node_def);
+          }
+
+          if (!this->live_graph_.moves->Contain(node_use, node_def)) {
+              this->live_graph_.moves->Append(node_use, node_def);
+          }
+      }
+
+      std::unordered_set<live::INodePtr> check;
+  }
 }
 
 void LiveGraphFactory::Liveness() {
   LiveMap();
 
-  bool to_print_liveness = false;
-
-  if (to_print_liveness){
-      {
-          /* print liveness */
-          FILE *live_file = fopen("/home/stu/tiger-compiler/live_output.txt", "w");
-
-          for (const auto &node : this->flowgraph_->Nodes()->GetList()) {
-              auto in_ = this->in_->Look(node);
-              auto out_ = this->out_->Look(node);
-
-              fprintf(live_file, "{");
-
-              if (in_) {
-                  for (const auto &temp : in_->GetList()) {
-                      auto name = reg_manager->temp_map_->Look(temp);
-
-                      if (name) {
-                          fprintf(live_file, "%s ", name->c_str());
-                      } else {
-                          fprintf(live_file, "%s ", ("t" + std::to_string(temp->Int())).c_str());
-                      }
-                  }
-              }
-
-              fprintf(live_file, "} | ");
-
-              // node->NodeInfo()->Print(live_file, reg_manager->temp_map_);
-
-              fprintf(live_file, "{");
-
-              if (out_) {
-                  for (const auto &temp : out_->GetList()) {
-                      auto name = reg_manager->temp_map_->Look(temp);
-
-                      if (name) {
-                          fprintf(live_file, "%s ", name->c_str());
-                      } else {
-                          fprintf(live_file, "%s ", ("t" + std::to_string(temp->Int())).c_str());
-                      }
-                  }
-              }
-
-              fprintf(live_file, "}\n");
-          }
-          /* print liveness */
-      }
-  }
-
+  this->PrintLiveOutSet(reg_manager);
+  
   InterfGraph();
 }
 

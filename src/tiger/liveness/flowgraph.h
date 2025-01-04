@@ -27,6 +27,10 @@ public:
   
   FGraphPtr GetFlowGraph() { return flowgraph_; }
 
+  ~FlowGraphFactory(){
+      delete this->flowgraph_;
+  }
+
 private:
   /* 指令列表 */
   assem::InstrList *instr_list_;

@@ -242,7 +242,7 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
                                                       nullptr));
               instr_list->Append(new assem::OperInstr("addq $" + std::to_string(r_constant_value) + ",`d0",
                                                       new temp::TempList({dst_reg}),
-                                                      nullptr,
+                                                      new temp::TempList({dst_reg}),
                                                       nullptr));
           }
       }
@@ -255,7 +255,7 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
                                                       nullptr));
               instr_list->Append(new assem::OperInstr("subq `s0,`d0",
                                                       new temp::TempList({dst_reg}),
-                                                      new temp::TempList({r_operand_reg}),
+                                                      new temp::TempList({r_operand_reg,dst_reg}),
                                                       nullptr));
           } else if (l_constant_llvm == nullptr && r_constant_llvm != nullptr) {
               instr_list->Append(new assem::MoveInstr("movq `s0,`d0",
@@ -263,7 +263,7 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
                                                       new temp::TempList({l_operand_reg})));
               instr_list->Append(new assem::OperInstr("subq $" + std::to_string(r_constant_value)+ ",`d0",
                                                       new temp::TempList({dst_reg}),
-                                                      nullptr,
+                                                      new temp::TempList({dst_reg}),
                                                       nullptr));
           } else if (l_constant_llvm == nullptr && r_constant_llvm == nullptr) {
               instr_list->Append(new assem::MoveInstr("movq `s0,`d0",
@@ -271,7 +271,7 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
                                                       new temp::TempList({l_operand_reg})));
               instr_list->Append(new assem::OperInstr("subq `s0,`d0",
                                                       new temp::TempList({dst_reg}),
-                                                      new temp::TempList({r_operand_reg}),
+                                                      new temp::TempList({r_operand_reg,dst_reg}),
                                                       nullptr));
           } else {
               instr_list->Append(new assem::OperInstr("movq $" + std::to_string(l_constant_value) + ",`d0",
@@ -280,7 +280,7 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
                                                       nullptr));
               instr_list->Append(new assem::OperInstr("subq $" + std::to_string(r_constant_value) + ",`d0",
                                                       new temp::TempList({dst_reg}),
-                                                      nullptr,
+                                                      new temp::TempList({dst_reg}),
                                                       nullptr));
           }
       }
@@ -292,7 +292,7 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
                                                       new temp::TempList({r_operand_reg})));
               instr_list->Append(new assem::OperInstr("imulq $" + std::to_string(l_constant_value) + ",`d0",
                                                       new temp::TempList({dst_reg}),
-                                                      nullptr,
+                                                      new temp::TempList({dst_reg}),
                                                       nullptr));
           } else if (l_constant_llvm == nullptr && r_constant_llvm != nullptr) {
               instr_list->Append(new assem::MoveInstr("movq `s0,`d0",
@@ -300,7 +300,7 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
                                                       new temp::TempList({l_operand_reg})));
               instr_list->Append(new assem::OperInstr("imulq $" + std::to_string(r_constant_value) + ",`d0",
                                                       new temp::TempList({dst_reg}),
-                                                      nullptr,
+                                                      new temp::TempList({dst_reg}),
                                                       nullptr));
           } else if (l_constant_llvm == nullptr && r_constant_llvm == nullptr) {
               instr_list->Append(new assem::MoveInstr("movq `s0,`d0",
@@ -308,7 +308,7 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
                                                       new temp::TempList({l_operand_reg})));
               instr_list->Append(new assem::OperInstr("imulq `s0,`d0",
                                                       new temp::TempList({dst_reg}),
-                                                      new temp::TempList({r_operand_reg}),
+                                                      new temp::TempList({r_operand_reg,dst_reg}),
                                                       nullptr));
           } else {
               instr_list->Append(new assem::OperInstr("movq $" + std::to_string(l_constant_value) + ",`d0",
@@ -317,7 +317,7 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
                                                       nullptr));
               instr_list->Append(new assem::OperInstr("imulq $" + std::to_string(r_constant_value) + ",`d0",
                                                       new temp::TempList({dst_reg}),
-                                                      nullptr,
+                                                      new temp::TempList({dst_reg}),
                                                       nullptr));
           }
       }
@@ -345,7 +345,7 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
                                                       nullptr));
 
               instr_list->Append(new assem::OperInstr("idivq `s0",
-                                                      nullptr,
+                                                      new temp::TempList({reg_manager->GetRegister(frame::X64RegManager::Reg::RDX), reg_manager->GetRegister(frame::X64RegManager::Reg::RAX)}),
                                                       new temp::TempList({r_operand_reg}),
                                                       nullptr));
           } else if (l_constant_llvm == nullptr && r_constant_llvm != nullptr){
@@ -366,7 +366,7 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
                                                       nullptr));
 
               instr_list->Append(new assem::OperInstr("idivq `s0",
-                                                      nullptr,
+                                                      new temp::TempList({reg_manager->GetRegister(frame::X64RegManager::Reg::RDX), reg_manager->GetRegister(frame::X64RegManager::Reg::RAX)}),
                                                       new temp::TempList({divisor_reg}),
                                                       nullptr));
           } else if (l_constant_llvm != nullptr && r_constant_llvm != nullptr) {
@@ -386,7 +386,7 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
                                                       nullptr));
 
               instr_list->Append(new assem::OperInstr("idivq `s0",
-                                                      nullptr,
+                                                      new temp::TempList({reg_manager->GetRegister(frame::X64RegManager::Reg::RDX), reg_manager->GetRegister(frame::X64RegManager::Reg::RAX)}),
                                                       new temp::TempList({divisor_reg}),
                                                       nullptr));
           } else if (l_constant_llvm == nullptr && r_constant_llvm == nullptr){
@@ -398,7 +398,7 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
                                                       new temp::TempList({reg_manager->GetRegister(frame::X64RegManager::Reg::RAX)}),
                                                       nullptr));
               instr_list->Append(new assem::OperInstr("idivq `s0",
-                                                      nullptr,
+                                                      new temp::TempList({reg_manager->GetRegister(frame::X64RegManager::Reg::RDX), reg_manager->GetRegister(frame::X64RegManager::Reg::RAX)}),
                                                       new temp::TempList({r_operand_reg}),
                                                       nullptr));
           }
@@ -575,15 +575,21 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
 
       std::unordered_map<temp::Temp *, temp::Temp *> temp_caller_reg_map;
       
-      /* 保护 caller-save regs */
-      for (const auto & caller_reg : caller_save_regs->GetList()){
-          auto temp = temp::TempFactory::NewTemp();
+    //   /* FIXME: 插入一条空指令*/
+    //   instr_list->Append(new assem::OperInstr("",
+    //                                           reg_manager->CallerSaves(),
+    //                                           new temp::TempList({}),
+    //                                           nullptr));
 
-          instr_list->Append(new assem::MoveInstr("movq `s0,`d0",
-                                                  new temp::TempList({temp}),
-                                                  new temp::TempList({caller_reg})));
-          temp_caller_reg_map.insert({temp, caller_reg});
-      }
+    //   /* 保护 caller-save regs */
+    //   for (const auto & caller_reg : caller_save_regs->GetList()){
+    //       auto temp = temp::TempFactory::NewTemp();
+
+    //       instr_list->Append(new assem::MoveInstr("movq `s0,`d0",
+    //                                               new temp::TempList({temp}),
+    //                                               new temp::TempList({caller_reg})));
+    //       temp_caller_reg_map.insert({temp, caller_reg});
+    //   }
 
       auto arg_operand_count = call_instr->getNumOperands() - 1;
 
@@ -619,13 +625,13 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
               } else {
                   if (auto *constant = llvm::dyn_cast<llvm::ConstantInt>(arg_operand_llvm)) {
                       auto constant_value = constant->getSExtValue();
-                      instr_list->Append(new assem::OperInstr("movq $" + std::to_string(constant_value) + "," + std::to_string(8 + 8 * arg_operand_index) + "(`s0)",
+                      instr_list->Append(new assem::OperInstr("movq $" + std::to_string(constant_value) + "," + std::to_string(0 + 8 * arg_operand_index) + "(`s0)",
                                                               nullptr,
                                                               new temp::TempList(reg_manager->GetRegister(frame::X64RegManager::Reg::RSP)),
                                                               nullptr));
                   } else {
                       auto param_reg = this->temp_map_->at(arg_operand_llvm);
-                      instr_list->Append(new assem::OperInstr("movq `s0," + std::to_string(8 + 8 * arg_operand_index) + "(`s1)",
+                      instr_list->Append(new assem::OperInstr("movq `s0," + std::to_string(0 + 8 * arg_operand_index) + "(`s1)",
                                                               nullptr,
                                                               new temp::TempList({param_reg, reg_manager->GetRegister(frame::X64RegManager::Reg::RSP)}),
                                                               nullptr));
@@ -638,7 +644,7 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
           auto static_link_llvm = call_instr->getArgOperand(1);
           auto static_link_reg = this->temp_map_->at(static_link_llvm);
 
-          instr_list->Append(new assem::OperInstr("movq `s0,8(`s1)",
+          instr_list->Append(new assem::OperInstr("movq `s0,(`s1)",
                                                   nullptr,
                                                   new temp::TempList({static_link_reg, reg_manager->GetRegister(frame::X64RegManager::Reg::RSP)}),
                                                   nullptr));
@@ -667,13 +673,13 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
               } else {
                   if (auto *constant = llvm::dyn_cast<llvm::ConstantInt>(arg_operand_llvm)) {
                       auto constant_value = constant->getSExtValue();
-                      instr_list->Append(new assem::OperInstr("movq $" + std::to_string(constant_value) + "," + std::to_string(8 * arg_operand_index) + "(`s0)",
+                      instr_list->Append(new assem::OperInstr("movq $" + std::to_string(constant_value) + "," + std::to_string(8 * (arg_operand_index - 1)) + "(`s0)",
                                                               nullptr,
                                                               new temp::TempList(reg_manager->GetRegister(frame::X64RegManager::Reg::RSP)),
                                                               nullptr));
                   } else {
                       auto param_reg = this->temp_map_->at(arg_operand_llvm);
-                      instr_list->Append(new assem::OperInstr("movq `s0," + std::to_string(8 * arg_operand_index) + "(`s1)",
+                      instr_list->Append(new assem::OperInstr("movq `s0," + std::to_string(8 * (arg_operand_index - 1)) + "(`s1)",
                                                               nullptr,
                                                               new temp::TempList({param_reg, reg_manager->GetRegister(frame::X64RegManager::Reg::RSP)}),
                                                               nullptr));
@@ -684,12 +690,7 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
       }
 
       /* 调用指令 */
-      /* FIXME: rsp 需要 +8 ? */
       {
-          instr_list->Append(new assem::OperInstr("addq $8,`d0",
-                                                  new temp::TempList({reg_manager->GetRegister(frame::X64RegManager::Reg::RSP)}),
-                                                  nullptr,
-                                                  nullptr));
           auto callee_function_name = call_instr->getCalledFunction()->getName().str();
           instr_list->Append(new assem::OperInstr("callq " + callee_function_name,
                                                   reg_manager->CallerSaves(),
@@ -700,19 +701,15 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
                                                   new temp::TempList({dst_reg}),
                                                   new temp::TempList({reg_manager->GetRegister(frame::X64RegManager::Reg::RAX)})));
 
-          instr_list->Append(new assem::OperInstr("subq $8,`d0",
-                                                  new temp::TempList({reg_manager->GetRegister(frame::X64RegManager::Reg::RSP)}),
-                                                  nullptr,
-                                                  nullptr));
       }
 
-      /* 恢复 caller-save regs */
-      for (const auto &[temp, caller_reg] : temp_caller_reg_map)
-      {
-          instr_list->Append(new assem::MoveInstr("movq `s0,`d0",
-                                                  new temp::TempList({caller_reg}),
-                                                  new temp::TempList({temp})));
-      }
+    //   /* 恢复 caller-save regs */
+    //   for (const auto &[temp, caller_reg] : temp_caller_reg_map)
+    //   {
+    //       instr_list->Append(new assem::MoveInstr("movq `s0,`d0",
+    //                                               new temp::TempList({caller_reg}),
+    //                                               new temp::TempList({temp})));
+    //   }
   }
 
   if (auto * ret_instr = llvm::dyn_cast<llvm::ReturnInst>(&inst)){
@@ -774,7 +771,7 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
                                                 nullptr,
                                                 nullptr));
 
-        instr_list->Append(new assem::OperInstr("cmp $0x1,`s0",
+        instr_list->Append(new assem::OperInstr("cmpq $0x1,`s0",
                                                 nullptr,
                                                 new temp::TempList({condition_reg}),
                                                 nullptr));
@@ -828,9 +825,20 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
                                                   new temp::TempList({l_operand_reg}),
                                                   nullptr));
       } else if (l_constant != nullptr && r_constant == nullptr) {
-          instr_list->Append(new assem::OperInstr("cmpq `s0,$" + std::to_string(l_constant_value),
-                                                  nullptr,
-                                                  new temp::TempList({r_operand_reg}),
+          auto d_tmp = temp::TempFactory::NewTemp();
+
+          instr_list->Append(new assem::OperInstr("movq $" + std::to_string(l_constant_value) + ",`d0",
+                                                  new temp::TempList({d_tmp}),
+                                                  new temp::TempList({}),
+                                                  nullptr));
+
+        //   instr_list->Append(new assem::OperInstr("cmpq `s0,$" + std::to_string(l_constant_value),
+        //                                           nullptr,
+        //                                           new temp::TempList({r_operand_reg}),
+        //                                           nullptr));
+          instr_list->Append(new assem::OperInstr("cmpq `s0,`s1",
+                                                  new temp::TempList({}),
+                                                  new temp::TempList({r_operand_reg, d_tmp}),
                                                   nullptr));
       } else if (l_constant != nullptr && r_constant != nullptr) {
           instr_list->Append(new assem::OperInstr("cmpq $" + std::to_string(r_constant_value) + ",$" + std::to_string(l_constant_value),

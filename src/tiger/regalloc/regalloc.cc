@@ -13,47 +13,180 @@ namespace ra {
     RegAllocator::~RegAllocator(){}
 
     void RegAllocator::RegAlloc(){
-        auto flow_graph_factory = fg::FlowGraphFactory(this->assem_instr_->GetInstrList());
+        // int count = 0;
+        while (true) {
+            /* 构建控制流图 */
+            auto flow_graph_factory = fg::FlowGraphFactory(this->assem_instr_->GetInstrList());
 
-        flow_graph_factory.AssemFlowGraph();
+            flow_graph_factory.AssemFlowGraph();
 
-        auto flow_graph = flow_graph_factory.GetFlowGraph();
+            auto flow_graph = flow_graph_factory.GetFlowGraph();
 
-        bool to_print_flow_graph = false;
+            /* 活性分析 */
+            auto live_graph_factory = live::LiveGraphFactory(flow_graph);
 
-        if (to_print_flow_graph){
-            /* print flow graph */
-            FILE *file = fopen("/home/stu/tiger-compiler/flow_graph_out_put.txt", "w");
+            live_graph_factory.Liveness();
 
-            for (const auto &node : flow_graph->Nodes()->GetList()) {
-                fprintf(file, "%d ", node->Key());
+            auto live_graph = live_graph_factory.GetLiveGraph();
 
-                auto succ = node->Succ();
+            /* 染色 */
+            col::Color color_helper(live_graph);
 
-                for (const auto &succ_ : succ->GetList()) {
-                    fprintf(file, "%d ", succ_->Key());
-                }
+            auto spill_vector = color_helper.doColor();
 
-                fprintf(file, "\n");
+            // count++;
+
+            if (spill_vector.size()) {
+                Rewrite(spill_vector);
+            } else {
+                auto color_result = color_helper.DumpColorMapping();
+
+                this->coloring = color_result.coloring;
+                
+                break;
             }
+        }
+    }
 
-            flow_graph->Show(file, flow_graph->Nodes(), [&](assem::Instr *i) {
-                if (typeid(*i) == typeid(assem::OperInstr)) {
-                    fprintf(file, "%s", static_cast<assem::OperInstr *>(i)->assem_.c_str());
+    void RegAllocator::Rewrite(const std::vector<live::INodePtr> & spill_vector){
+        auto frame_current_size = frame_info_map[this->name_].second;
+        frame_current_size = frame_current_size + spill_vector.size() * 8;
+        auto frame_current_offset = frame_info_map[this->name_].first;
+
+        for (const auto & spill_node : spill_vector){
+            auto spill_temp = spill_node->NodeInfo();
+
+            frame_current_offset = frame_current_offset - 8;
+
+            std::unordered_set<assem::Instr*> new_inserted_instr;
+
+            auto iter = this->assem_instr_->GetInstrList()->GetList().begin();
+
+            while (iter != this->assem_instr_->GetInstrList()->GetList().end()) {
+                if (new_inserted_instr.find(*iter) != new_inserted_instr.end()){
+                    iter++;
+                    continue;
                 }
-                if (typeid(*i) == typeid(assem::MoveInstr)) {
-                    fprintf(file, "%s", static_cast<assem::MoveInstr *>(i)->assem_.c_str());
+
+                auto use_temp_list = (*iter)->Use();
+
+                auto def_temp_list = (*iter)->Def();
+
+                /* 使用 */
+                if ((use_temp_list && use_temp_list->Contain(spill_temp)) && (def_temp_list == nullptr || !def_temp_list->Contain(spill_temp))) {
+                    auto replace_temp = temp::TempFactory::NewTemp();
+
+                    use_temp_list->Replace(spill_temp, replace_temp);
+
+                    auto rsp_add_instr = new assem::OperInstr("leaq " + std::to_string(frame_current_offset) + "(%rsp),%rsp",
+                                                              new temp::TempList({reg_manager->GetRegister(frame::X64RegManager::Reg::RSP)}),
+                                                              new temp::TempList({reg_manager->GetRegister(frame::X64RegManager::Reg::RSP)}),
+                                                              nullptr);
+                    auto load_instr = new assem::OperInstr("movq " + this->name_ + "_framesize_local(%rsp),`d0",
+                                                           new temp::TempList({replace_temp}),
+                                                           new temp::TempList({reg_manager->GetRegister(frame::X64RegManager::Reg::RSP)}),
+                                                           nullptr);
+                    auto rsp_sub_instr = new assem::OperInstr("leaq " + std::to_string(-frame_current_offset) + "(%rsp),%rsp",
+                                                              new temp::TempList({reg_manager->GetRegister(frame::X64RegManager::Reg::RSP)}),
+                                                              new temp::TempList({reg_manager->GetRegister(frame::X64RegManager::Reg::RSP)}),
+                                                              nullptr);
+
+                    new_inserted_instr.insert(rsp_add_instr);
+                    new_inserted_instr.insert(load_instr);
+                    new_inserted_instr.insert(rsp_sub_instr);
+
+                    this->assem_instr_->GetInstrList()->Insert(iter, rsp_add_instr);
+                    this->assem_instr_->GetInstrList()->Insert(iter, load_instr);
+                    this->assem_instr_->GetInstrList()->Insert(iter, rsp_sub_instr);
                 }
-                if (typeid(*i) == typeid(assem::LabelInstr)) {
-                    fprintf(file, "%s", static_cast<assem::LabelInstr *>(i)->assem_.c_str());
+
+                /* 定义 */
+                if ((use_temp_list == nullptr || !use_temp_list->Contain(spill_temp)) && (def_temp_list && def_temp_list->Contain(spill_temp))){
+                    auto replace_temp = temp::TempFactory::NewTemp();
+
+                    def_temp_list->Replace(spill_temp, replace_temp);
+
+                    auto rsp_add_instr = new assem::OperInstr("leaq " + std::to_string(frame_current_offset) + "(%rsp),%rsp",
+                                                              new temp::TempList({reg_manager->GetRegister(frame::X64RegManager::Reg::RSP)}),
+                                                              new temp::TempList({reg_manager->GetRegister(frame::X64RegManager::Reg::RSP)}),
+                                                              nullptr);
+                    auto store_instr = new assem::OperInstr("movq `s0," + this->name_ + "_framesize_local(%rsp)",
+                                                            new temp::TempList({}),
+                                                            new temp::TempList({replace_temp,reg_manager->GetRegister(frame::X64RegManager::Reg::RSP)}),
+                                                            nullptr);
+                    auto rsp_sub_instr = new assem::OperInstr("leaq " + std::to_string(-frame_current_offset) + "(%rsp),%rsp",
+                                                              new temp::TempList({reg_manager->GetRegister(frame::X64RegManager::Reg::RSP)}),
+                                                              new temp::TempList({reg_manager->GetRegister(frame::X64RegManager::Reg::RSP)}),
+                                                              nullptr);
+
+                    new_inserted_instr.insert(rsp_add_instr);
+                    new_inserted_instr.insert(store_instr);
+                    new_inserted_instr.insert(rsp_sub_instr);
+
+                    this->assem_instr_->GetInstrList()->Insert(std::next(iter), rsp_sub_instr);
+                    this->assem_instr_->GetInstrList()->Insert(std::next(iter), store_instr);
+                    this->assem_instr_->GetInstrList()->Insert(std::next(iter), rsp_add_instr);
                 }
-            });
-            fflush(file);
-            /* print flow graph */
+
+                /* 使用后又定义 */
+                if ((use_temp_list && use_temp_list->Contain(spill_temp)) && (def_temp_list && def_temp_list->Contain(spill_temp))){
+                    auto replace_temp = temp::TempFactory::NewTemp();
+
+                    use_temp_list->Replace(spill_temp, replace_temp);
+                    def_temp_list->Replace(spill_temp, replace_temp);
+
+                    auto load_rsp_add_instr = new assem::OperInstr("leaq " + std::to_string(frame_current_offset) + "(%rsp),%rsp",
+                                                                   new temp::TempList({reg_manager->GetRegister(frame::X64RegManager::Reg::RSP)}),
+                                                                   new temp::TempList({reg_manager->GetRegister(frame::X64RegManager::Reg::RSP)}),
+                                                                   nullptr);
+
+                    auto load_instr = new assem::OperInstr("movq " + this->name_ + "_framesize_local(%rsp),`d0",
+                                                           new temp::TempList({replace_temp}),
+                                                           new temp::TempList({reg_manager->GetRegister(frame::X64RegManager::Reg::RSP)}),
+                                                           nullptr);
+
+                    auto load_rsp_sub_instr = new assem::OperInstr("leaq " + std::to_string(-frame_current_offset) + "(%rsp),%rsp",
+                                                                   new temp::TempList({reg_manager->GetRegister(frame::X64RegManager::Reg::RSP)}),
+                                                                   new temp::TempList({reg_manager->GetRegister(frame::X64RegManager::Reg::RSP)}),
+                                                                   nullptr);
+
+                    auto store_rsp_add_instr = new assem::OperInstr("leaq " + std::to_string(frame_current_offset) + "(%rsp),%rsp",
+                                                                    new temp::TempList({reg_manager->GetRegister(frame::X64RegManager::Reg::RSP)}),
+                                                                    new temp::TempList({reg_manager->GetRegister(frame::X64RegManager::Reg::RSP)}),
+                                                                    nullptr);
+
+                    auto store_instr = new assem::OperInstr("movq `s0," + this->name_ + "_framesize_local(%rsp)",
+                                                            new temp::TempList({}),
+                                                            new temp::TempList({replace_temp, reg_manager->GetRegister(frame::X64RegManager::Reg::RSP)}),
+                                                            nullptr);
+
+                    auto store_rsp_sub_instr = new assem::OperInstr("leaq " + std::to_string(-frame_current_offset) + "(%rsp),%rsp",
+                                                                    new temp::TempList({reg_manager->GetRegister(frame::X64RegManager::Reg::RSP)}),
+                                                                    new temp::TempList({reg_manager->GetRegister(frame::X64RegManager::Reg::RSP)}),
+                                                                    nullptr);
+
+                    new_inserted_instr.insert(load_rsp_add_instr);
+                    new_inserted_instr.insert(load_rsp_sub_instr);
+                    new_inserted_instr.insert(load_instr);
+                    new_inserted_instr.insert(store_instr);
+                    new_inserted_instr.insert(store_rsp_add_instr);
+                    new_inserted_instr.insert(store_rsp_sub_instr);
+
+                    this->assem_instr_->GetInstrList()->Insert(iter, load_rsp_add_instr);
+                    this->assem_instr_->GetInstrList()->Insert(iter, load_instr);
+                    this->assem_instr_->GetInstrList()->Insert(iter, load_rsp_sub_instr);
+
+                    this->assem_instr_->GetInstrList()->Insert(std::next(iter), store_rsp_sub_instr);
+                    this->assem_instr_->GetInstrList()->Insert(std::next(iter), store_instr);
+                    this->assem_instr_->GetInstrList()->Insert(std::next(iter), store_rsp_add_instr);
+                }
+
+                iter++;
+            }
         }
 
-        auto live_graph_factory = live::LiveGraphFactory(flow_graph);
+        frame_info_map.at(this->name_).first = frame_current_offset;
 
-        live_graph_factory.Liveness();
+        frame_info_map.at(this->name_).second = frame_current_size;
     }
 } // namespace ra
