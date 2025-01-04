@@ -513,22 +513,25 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
           src_bits = 64;
       }
 
-      if (src_bits == 1){
-          instr_list->Append(new assem::OperInstr("movzbq `s0,`d0",
-                                                  new temp::TempList({dst_reg}),
-                                                  new temp::TempList({src_reg}),
-                                                  nullptr));
-      } else if (src_bits == 16) {
-          instr_list->Append(new assem::OperInstr("movzwq `s0,`d0",
-                                                  new temp::TempList({dst_reg}),
-                                                  new temp::TempList({src_reg}),
-                                                  nullptr));
-      } else if (src_bits == 32) {
-          instr_list->Append(new assem::OperInstr("movl `s0,`d0",
-                                                  new temp::TempList({dst_reg}),
-                                                  new temp::TempList({src_reg}),
-                                                  nullptr));
-      }
+    //   if (src_bits == 1){
+    //       instr_list->Append(new assem::OperInstr("movzbq `s0,`d0",
+    //                                               new temp::TempList({dst_reg}),
+    //                                               new temp::TempList({src_reg}),
+    //                                               nullptr));
+    //   } else if (src_bits == 16) {
+    //       instr_list->Append(new assem::OperInstr("movzwq `s0,`d0",
+    //                                               new temp::TempList({dst_reg}),
+    //                                               new temp::TempList({src_reg}),
+    //                                               nullptr));
+    //   } else if (src_bits == 32) {
+    //       instr_list->Append(new assem::OperInstr("movl `s0,`d0",
+    //                                               new temp::TempList({dst_reg}),
+    //                                               new temp::TempList({src_reg}),
+    //                                               nullptr));
+    //   }
+      instr_list->Append(new assem::MoveInstr("movq `s0,`d0",
+                                              new temp::TempList({dst_reg}),
+                                              new temp::TempList({src_reg})));
 
       return;
   }
@@ -550,22 +553,26 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
             src_bits = 64;
         }
 
-        if (src_bits == 1) {
-            instr_list->Append(new assem::OperInstr("movsbq `s0,`d0",
-                                                    new temp::TempList({dst_reg}),
-                                                    new temp::TempList({src_reg}),
-                                                    nullptr));
-        } else if (src_bits == 16) {
-            instr_list->Append(new assem::OperInstr("movswq `s0,`d0",
-                                                    new temp::TempList({dst_reg}),
-                                                    new temp::TempList({src_reg}),
-                                                    nullptr));
-        } else if (src_bits == 32) {
-            instr_list->Append(new assem::OperInstr("movslq `s0,`d0",
-                                                    new temp::TempList({dst_reg}),
-                                                    new temp::TempList({src_reg}),
-                                                    nullptr));
-        }
+        // if (src_bits == 1) {
+        //     instr_list->Append(new assem::OperInstr("movsbq `s0,`d0",
+        //                                             new temp::TempList({dst_reg}),
+        //                                             new temp::TempList({src_reg}),
+        //                                             nullptr));
+        // } else if (src_bits == 16) {
+        //     instr_list->Append(new assem::OperInstr("movswq `s0,`d0",
+        //                                             new temp::TempList({dst_reg}),
+        //                                             new temp::TempList({src_reg}),
+        //                                             nullptr));
+        // } else if (src_bits == 32) {
+        //     instr_list->Append(new assem::OperInstr("movslq `s0,`d0",
+        //                                             new temp::TempList({dst_reg}),
+        //                                             new temp::TempList({src_reg}),
+        //                                             nullptr));
+        // }
+
+        instr_list->Append(new assem::MoveInstr("movq `s0,`d0",
+                                                new temp::TempList({dst_reg}),
+                                                new temp::TempList({src_reg})));
 
         return; 
     }
@@ -851,6 +858,11 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
                                                   new temp::TempList({r_operand_reg, l_operand_reg}),
                                                   nullptr));
       }
+
+      instr_list->Append(new assem::OperInstr("movq $0,`d0",
+                                              new temp::TempList({dst_reg}),
+                                              new temp::TempList({}),
+                                              nullptr));
 
       if (predicate == llvm::CmpInst::ICMP_SLT){
           instr_list->Append(new assem::OperInstr("setl `d0",

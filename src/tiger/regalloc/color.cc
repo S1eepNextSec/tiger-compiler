@@ -62,6 +62,7 @@ namespace col {
     }
 
     void Color::InitNodeAdjsMapping(){
+        /* 遍历每个 Node */
         for (const auto &inode : this->graph->Nodes()->GetList()) {
             if (isMachineReg(inode)) {
                 continue;
@@ -70,20 +71,31 @@ namespace col {
             auto preds = inode->Pred()->GetList();
             auto succs = inode->Succ()->GetList();
 
-            /* 构建 node -> adjs 映射*/
-            if (this->node_adj_map.find(inode) == this->node_adj_map.end()) {
+            /* 构建 node -> intefere edges 映射*/
+            if (this->node_interfere_edge_map.find(inode) == this->node_interfere_edge_map.end()){
                 std::unordered_set<live::INodePtr> adj_set;
-                this->node_adj_map.insert({inode, std::move(adj_set)});
+                this->node_interfere_edge_map.insert({inode, std::move(adj_set)});
             }
 
             for (const auto &adj : preds) {
-                this->node_adj_map[inode].insert(adj);
+                this->node_interfere_edge_map[inode].insert(adj);
             }
 
             for (const auto &adj : succs) {
-                this->node_adj_map[inode].insert(adj);
+                this->node_interfere_edge_map[inode].insert(adj);
             }
         }
+        /* 所有非机器寄存器节点都存储了 节点 -> 邻居(包含机器寄存器节点) 的映射*/
+
+        /* 根据每个节点邻居数 计算初始度 */
+        for (const auto & inode : this->graph->Nodes()->GetList()){
+            if (isMachineReg(inode)){
+                this->node_current_degree[inode] = this->K;
+            } else {
+                this->node_current_degree[inode] = this->node_interfere_edge_map.at(inode).size();
+            }
+        }
+
     }
 
     void Color::InitWorkSet(){
@@ -107,6 +119,7 @@ namespace col {
                 continue;
             }
 
+            /* 根据初始的度构建工作集 */
             if (isLowDegree(inode)) {
                 if (isMoveRelated(inode)) {
                     this->low_degree_move_related_set.insert(inode);
@@ -126,57 +139,45 @@ namespace col {
             
             this->select_stack.push_back(*node_iter);
 
-            auto adj_vec = this->getAdjacent(*node_iter);
+            auto adj_vec = this->GetCurrentActiveAdjacent(*node_iter);
 
             for (const auto & adj : adj_vec){
-                this->DeleteEdge(*node_iter, adj);
+                this->DecrementDegree(adj);
             }
 
             this->low_degree_simplify_set.erase(node_iter);
         }
     }
 
-    void Color::DeleteEdge(live::INodePtr src,live::INodePtr adj){
-        if (!this->isAdj(src,adj)){
+    void Color::DecrementDegree(live::INodePtr inode){
+        if (isMachineReg(inode)){
             return;
         }
 
-        if (!isMachineReg(src)){
-            this->node_adj_map[src].erase(adj);
-        }
-
-        if (!isMachineReg(adj)){
-            this->node_adj_map[adj].erase(src);
-        }
-
-        if (isMachineReg(adj)){
-            return;
-        }
-
-        auto adj_degree = this->GetDegree(adj);
+        this->node_current_degree[inode]--;
 
         /* 从 high degree -> low degree */
-        if (adj_degree == this->K - 1){
-            this->AddPotentialMoves(adj);
+        if (this->node_current_degree[inode] == this->K - 1){
+            this->AddPotentialMoves(inode);
 
-            auto adj_adj_list = this->getAdjacent(adj);
+            auto adj_list = this->GetCurrentActiveAdjacent(inode);
 
-            for (auto adj_adj : adj_adj_list){
-                this->AddPotentialMoves(adj_adj);
+            for (auto adj : adj_list){
+                this->AddPotentialMoves(adj);
             }
 
-            this->high_degree_set.erase(adj);
+            this->high_degree_set.erase(inode);
 
-            if (isMoveRelated(adj)){
-                this->low_degree_move_related_set.insert(adj);
+            if (isMoveRelated(inode)){
+                this->low_degree_move_related_set.insert(inode);
             } else {
-                this->low_degree_simplify_set.insert(adj);
+                this->low_degree_simplify_set.insert(inode);
             }
         }
     }
 
     void Color::AddPotentialMoves(live::INodePtr p){
-        auto moves = this->getRelatedMoves(p);
+        auto moves = this->GetRelatedMoves(p);
 
         for (auto move : moves){
             if (this->unprepared_moves.find(move) != this->unprepared_moves.end()){
@@ -218,7 +219,7 @@ namespace col {
                 coalesced_moves.insert(potential_move);
                 add_work_list(combine_target);
             } else if ((this->isPreColored(combine_source) && this->isPreColored(combine_target)) ||
-                        this->isAdj(combine_source,combine_target)) {    
+                        this->hasInterfereEdge(combine_source,combine_target)) {    
                 this->constrained_moves.insert(potential_move);
                 add_work_list(combine_target);
                 add_work_list(combine_source);
@@ -254,13 +255,11 @@ namespace col {
 
         this->AddPotentialMoves(target);
 
-        auto source_adjs = this->getAdjacent(source);
+        auto source_adjs = this->GetCurrentActiveAdjacent(source);
 
         for (const auto & adj: source_adjs){
-            this->node_adj_map[target].insert(adj);
-            this->node_adj_map[adj].insert(target);
-
-            this->DeleteEdge(source, adj);
+            this->AddEdge(target, adj);
+            this->DecrementDegree(adj);
         }
 
         if (this->isHighDegree(target) && 
@@ -270,9 +269,21 @@ namespace col {
         }
     }
 
+    void Color::AddEdge(live::INodePtr a, live::INodePtr b){
+        if (!this->isMachineReg(a)){
+            this->node_interfere_edge_map[a].insert(b);
+            this->node_current_degree[a]++;
+        }
+
+        if (!this->isMachineReg(b)){
+            this->node_interfere_edge_map[b].insert(a);
+            this->node_current_degree[b]++;
+        }
+    }
+
     bool Color::BriggsRuleCheck(live::INodePtr a, live::INodePtr b){
-        auto a_adjs = this->getAdjacent(a);
-        auto b_adjs = this->getAdjacent(b);
+        auto a_adjs = this->GetCurrentActiveAdjacent(a);
+        auto b_adjs = this->GetCurrentActiveAdjacent(b);
 
         std::unordered_set<live::INodePtr> adjs;
 
@@ -296,11 +307,11 @@ namespace col {
     }
     bool Color::GeorgeRuleCheck(live::INodePtr source, live::INodePtr target){
         // return true;
-        auto adjs = this->getAdjacent(source);
+        auto adjs = this->GetCurrentActiveAdjacent(source);
 
         for (const auto & node : adjs){
             if (this->isLowDegree(node) || 
-                this->isAdj(node,target)){
+                this->hasInterfereEdge(node,target)){
                 continue;
             }
 
@@ -321,7 +332,7 @@ namespace col {
     }
 
     void Color::FreezeRelatedMoves(live::INodePtr p){
-        const auto &related_moves = this->getRelatedMoves(p);
+        const auto &related_moves = this->GetRelatedMoves(p);
 
         for (const auto &move : related_moves) {
             live::INodePtr another_node = nullptr;
@@ -356,14 +367,13 @@ namespace col {
         int max = 0;
         live::INodePtr node_to_spill = nullptr;
         for (const auto &inode : this->high_degree_set) {
-            if (this->GetDegree(inode) > max){
+            if (this->node_current_degree[inode] > max){
                 node_to_spill = inode;
-                max = this->GetDegree(inode);
+                max = this->node_current_degree[inode];
             }
         }
 
         return node_to_spill;
-        // return * this->high_degree_set.begin();
     }
 
     void Color::AssignColor(){
@@ -378,8 +388,14 @@ namespace col {
                 valid_colors.insert(i);
             }
 
-            auto adjs = node_to_color->Adj()->GetList();
-            // auto adjs = this->getAdjacent(node_to_color);
+            // FIXME: 用 CurrentActiveAdj 会引起问题
+            // 假设这样一种情况 a & b 相干, 且有 b,c move
+            // a先被simplify 先入栈 而b c之后由于可以move 出现了 b move to c
+            // 因此 b 中存活邻居节点不包含a 所以 a 和 c不会有互相相干的信息
+            // 完全因为 a 先被simplify 因此 必须获取所有相干关系而不是当前存活的相干关系
+            // auto adjs = this->GetCurrentActiveAdjacent(node_to_color);
+
+            const auto & adjs = this->node_interfere_edge_map.at(node_to_color);
 
             for (const auto & adj : adjs){
                 auto actual_node = this->GetAlias(adj);
@@ -432,10 +448,6 @@ namespace col {
 
             map_result->Enter(machine_reg, reg_name);
         }
-
-        // for (const auto &[node, color] : this->reg_color_map) {
-        //     map_result->Enter(node->NodeInfo(), color_reg_map[color]);
-        // }
 
         for (const auto & node : this->graph->Nodes()->GetList()){
             map_result->Enter(node->NodeInfo(), color_reg_map[this->reg_color_map[this->GetAlias(node)]]);

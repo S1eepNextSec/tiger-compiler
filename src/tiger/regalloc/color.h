@@ -49,9 +49,10 @@ private:
   std::unordered_set<live::INodePtr> low_degree_move_related_set;
   std::unordered_set<live::INodePtr> high_degree_set;
 
-  std::unordered_map<live::INodePtr,std::unordered_set<live::INodePtr>> node_adj_map;
+  std::unordered_map<live::INodePtr,std::unordered_set<live::INodePtr>> node_interfere_edge_map;
+//   std::unordered_map<live::INodePtr, int> node_degree_map;
+  std::unordered_map<live::INodePtr, int> node_current_degree;
 
-//   std::multimap<live::INodePtr, std::pair<live::INodePtr, live::INodePtr> *> node_move_instr_map;
   std::unordered_map<live::INodePtr, std::unordered_set<std::pair<live::INodePtr, live::INodePtr> *>> node_move_instr_map;
 
   std::unordered_set<std::pair<live::INodePtr, live::INodePtr>*> unprepared_moves;
@@ -69,7 +70,8 @@ private:
   void InitNodeAdjsMapping();
   void InitWorkSet();
   void Simplify();
-  void DeleteEdge(live::INodePtr src,live::INodePtr adj);
+  void DecrementDegree(live::INodePtr inode);
+  void AddEdge(live::INodePtr a, live::INodePtr b);
   void AddPotentialMoves(live::INodePtr p);
   void Coalesce();
   void Combine(live::INodePtr target,live::INodePtr source);
@@ -83,32 +85,6 @@ private:
   void RewriteCode();
 
   private:
-  inline bool isAdj(live::INodePtr p,live::INodePtr q){
-    if (this->isMachineReg(p) && this->isMachineReg(q)){
-        return true;
-    }
-
-    if (this->isMachineReg(p)){
-        if(this->node_adj_map[q].find(p) != this->node_adj_map[q].end()){
-            return true;
-        }
-        return false;
-    }
-
-    if (this->isMachineReg(q)){
-        if (this->node_adj_map[p].find(q) != this->node_adj_map[p].end()){
-            return true;
-        }
-        return false;
-    }
-
-    if (this->node_adj_map[p].find(q) != this->node_adj_map[p].end() ||
-        this->node_adj_map[q].find(p) != this->node_adj_map[q].end()){
-        return true;
-    }
-    
-    return false;
-  }
   inline bool isColored(live::INodePtr p){
       return this->reg_color_map.find(p) != this->reg_color_map.end();
   }
@@ -116,18 +92,18 @@ private:
       return this->machine_regs.find(p) != this->machine_regs.end();
   }
   inline bool isLowDegree(live::INodePtr p){
-      return this->GetDegree(p) < K;
+      return this->node_current_degree[p] < this->K;
   }
 
   inline bool isHighDegree(live::INodePtr p){
-      return this->GetDegree(p) >= K;
+      return this->node_current_degree[p] >= this->K;
   }
 
   inline bool isMachineReg(live::INodePtr p){
       return this->machine_regs.find(p) != this->machine_regs.end();
   }
 
-  inline std::vector<std::pair<live::INodePtr, live::INodePtr> *> getRelatedMoves(live::INodePtr p)
+  inline std::vector<std::pair<live::INodePtr, live::INodePtr> *> GetRelatedMoves(live::INodePtr p)
   {
       std::vector<std::pair<live::INodePtr, live::INodePtr> *> result;
 
@@ -141,20 +117,44 @@ private:
       return result;
   }
 
-  inline std::vector<live::INodePtr> getAdjacent(live::INodePtr p){
+  inline std::vector<live::INodePtr> GetCurrentActiveAdjacent(live::INodePtr p){
       std::vector<live::INodePtr> result;
 
-      auto set = this->node_adj_map[p];
+      const auto& set = this->node_interfere_edge_map[p];
 
       for (const auto & inode : set){
-          result.push_back(inode);
+        if (std::find(this->select_stack.begin(),this->select_stack.end(),inode) != this->select_stack.end()){
+            continue;
+        }
+
+        if (this->coalesced_nodes.find(inode)!= this->coalesced_nodes.end()){
+            continue;
+        }
+
+        result.push_back(inode);
       }
 
       return result;
   }
 
+    inline bool hasInterfereEdge(live::INodePtr a,live::INodePtr b){
+        if (this->isMachineReg(a) && this->isMachineReg(b)){
+            return true;
+        }
+
+        if (!this->isMachineReg(a)){
+            return this->node_interfere_edge_map[a].find(b) != this->node_interfere_edge_map[a].end();
+        }
+
+        if (!this->isMachineReg(b)){
+            return this->node_interfere_edge_map[b].find(a) != this->node_interfere_edge_map[b].end();
+        }
+
+        return false;
+    }
+
   inline bool isMoveRelated(live::INodePtr p){
-      return this->getRelatedMoves(p).size() != 0;
+      return this->GetRelatedMoves(p).size() != 0;
   }
 
   inline live::INodePtr GetAlias(live::INodePtr p){
@@ -166,14 +166,6 @@ private:
       }
 
       return p;
-  }
-
-  inline int GetDegree(live::INodePtr p){
-    if (this->machine_regs.find(p) != this->machine_regs.end()){
-        return this->K;
-    } else {
-        return this->node_adj_map[p].size();
-    }
   }
 };
 } // namespace col
