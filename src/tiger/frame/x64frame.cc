@@ -79,6 +79,9 @@ temp::TempList *X64RegManager::CalleeSaves() {
   return temp_list;
 }
 
+/**
+ * @return 返回函数调用结束后 live out 的寄存器
+ */
 temp::TempList *X64RegManager::ReturnSink() {
   temp::TempList *temp_list = CalleeSaves();
   temp_list->Append(regs_[SP]);
@@ -99,8 +102,8 @@ temp::Temp *X64RegManager::FramePointer() { return regs_[FP]; }
  */
 class InFrameAccess : public Access {
 public:
-  int offset;
-  frame::Frame *parent_frame;
+  int offset; // 相对于stack frame top 的 offset
+  frame::Frame *parent_frame; // 记录函数的 frame 结构
 
   explicit InFrameAccess(int offset, frame::Frame *parent)
       : offset(offset), parent_frame(parent) {}
@@ -136,7 +139,7 @@ public:
   }
 
   /**
-   * 为Callee在Caller Frame中分配一段空间
+   * 为Callee在Caller Frame中分配一段空间用来传递参数
    */
   void AllocOutgoSpace(int size) override {
     if (size > outgo_size_)
@@ -199,10 +202,14 @@ frame::Frame *NewFrame(temp::Label *name, std::list<bool> formals) {
 assem::InstrList *ProcEntryExit1(std::string_view function_name,
                                  assem::InstrList *body) {
   // TODO: your lab5 code here
-  auto callee_save_regs = reg_manager->CalleeSaves();
 
+  auto callee_save_regs = reg_manager->CalleeSaves();
+  
   body->Append(new assem::LabelInstr(std::string(function_name) + "_ret"));
 
+  // 把传入的参数全部都从机器寄存器移动到无限的临时寄存器
+  // 保证所有机器寄存器一开始都可以参与到寄存器分配
+  // 同时函数末尾添加将对应临时寄存器中保存的值移回机器寄存器的指令
   for (const auto & reg : callee_save_regs->GetList()){
       auto temp = temp::TempFactory::NewTemp();
 
@@ -224,6 +231,7 @@ assem::InstrList *ProcEntryExit1(std::string_view function_name,
  * @return instructions with sink instruction
  */
 assem::InstrList *ProcEntryExit2(assem::InstrList *body) {
+  // 加一条空指令 在 liveness 分析的时候可以保证函数出口处机器寄存器存活
   body->Append(new assem::OperInstr("", new temp::TempList(),
                                     reg_manager->ReturnSink(), nullptr));
   return body;
@@ -240,21 +248,20 @@ assem::Proc *ProcEntryExit3(std::string_view function_name,
   std::string prologue = "";
   std::string epilogue = "";
 
-  
+  // 调整栈指针
   body->PushFront(new assem::OperInstr("subq $" + std::string(function_name) + "_framesize_local,`d0",
                                        new temp::TempList({reg_manager->GetRegister(frame::X64RegManager::Reg::RSP)}),
                                        nullptr,
                                        nullptr));
-  // body->PushFront(new assem::OperInstr(std::string(function_name) + ":",
-  //                                      nullptr,
-  //                                      nullptr,
-  //                                      nullptr));
+
   body->PushFront(new assem::LabelInstr(std::string(function_name)));
 
+  // 末尾“退栈”
   body->Append(new assem::OperInstr("addq $" + std::string(function_name) + "_framesize_local,`d0",
                                     new temp::TempList(reg_manager->GetRegister(frame::X64RegManager::Reg::RSP)),
                                     nullptr,
                                     nullptr));
+  // 返回
   body->Append(new assem::OperInstr("retq",
                                     nullptr,
                                     nullptr,
